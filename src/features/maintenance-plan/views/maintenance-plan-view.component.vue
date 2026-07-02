@@ -130,7 +130,7 @@
       @planCreated="onPlanCreated" 
     />
     <!-- Encuesta Post-Tarea -->
-    <Dialog v-model:visible="showSurveyDialog" :modal="false" position="bottomright" :closable="true" :dismissableMask="true" header="¿Qué tan fácil fue usar el Wizard?">
+    <Dialog v-model:visible="showSurveyDialog" :modal="false" position="bottomright" :closable="true" :dismissableMask="true" header="¿Qué tan fácil fue crear el plan?">
       <div class="flex flex-column align-items-center gap-3 p-3">
         <Rating v-model="surveyRating" @change="submitSurvey" :cancel="false" />
       </div>
