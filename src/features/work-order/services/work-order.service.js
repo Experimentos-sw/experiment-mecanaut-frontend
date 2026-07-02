@@ -11,6 +11,8 @@ export class WorkOrderService {
    */
   static async getOrders(productionLineId = null) {
     try {
+      if (!productionLineId) return [];
+
       let endpoint = `/work-orders/by-production-line/${productionLineId}`;
             
       const response = await apiService.get(endpoint);
@@ -153,6 +155,22 @@ export class WorkOrderService {
       return true;
     } catch (error) {
       console.error('Error eliminando orden de trabajo:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Completa una orden de trabajo (requiere checklist)
+   * @param {number} id - ID de la orden de trabajo
+   * @param {Object} checklist - Valores de la checklist (isAreaCleaned, areToolsReturned, isOperationsVerified)
+   * @returns {Promise<WorkOrderEntity>} - Orden de trabajo completada
+   */
+  static async completeOrder(id, checklist) {
+    try {
+      const response = await apiService.put(`/work-orders/${id}/complete`, checklist);
+      return new WorkOrderEntity(response.data);
+    } catch (error) {
+      console.error('Error completando orden de trabajo:', error);
       throw error;
     }
   }
