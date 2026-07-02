@@ -1,7 +1,28 @@
 <template>
   <div class="wizard-container">
-    <div class="wizard-header">
+    <div class="wizard-header flex align-items-center justify-content-between mb-4">
       <h2>Crear Plan de Mantenimiento</h2>
+      
+      <div class="kpi-panel flex gap-4 align-items-center bg-gray-50 px-3 py-2 border-round">
+        <div v-if="isCalculatingKpis" class="flex align-items-center">
+          <ProgressSpinner style="width: 20px; height: 20px" strokeWidth="4" class="mr-2" />
+          <span class="text-500 text-sm">Calculando proyecciones...</span>
+        </div>
+        <template v-else-if="mtbf > 0 || mttr > 0">
+          <div class="flex flex-column">
+            <span class="text-xs text-500 uppercase font-bold">MTBF Proyectado</span>
+            <span class="font-bold text-xl" :class="getMtbfColor(mtbf)">{{ mtbf }} hrs</span>
+          </div>
+          <div class="flex flex-column">
+            <span class="text-xs text-500 uppercase font-bold">MTTR Proyectado</span>
+            <span class="font-bold text-xl" :class="getMttrColor(mttr)">{{ mttr }} hrs</span>
+          </div>
+        </template>
+        <div v-else class="text-500 text-sm">
+          Configura máquinas para ver KPIs
+        </div>
+      </div>
+
       <Button icon="pi pi-times" rounded text @click="$emit('close')" aria-label="Cancelar" />
     </div>
 
@@ -145,6 +166,7 @@ import { useMaintenancePlanWizardStore } from '@/stores/maintenancePlanWizard.st
 import { PlantApiService } from '../../asset-management/services/plant-api.service.js';
 import { ProductionLineApiService } from '../../asset-management/services/production-line-api.service.js';
 import { MachineryApiService } from '../../asset-management/services/machinery-api.service.js';
+import { KpiProjectionApiService } from '../services/kpi-projection-api.service.js';
 
 import Stepper from 'primevue/stepper';
 import StepList from 'primevue/steplist';
@@ -156,6 +178,7 @@ import InputText from 'primevue/inputtext';
 import InputNumber from 'primevue/inputnumber';
 import Select from 'primevue/select';
 import MultiSelect from 'primevue/multiselect';
+import ProgressSpinner from 'primevue/progressspinner';
 
 const emit = defineEmits(['close', 'planCreated']);
 const store = useMaintenancePlanWizardStore();
@@ -167,6 +190,69 @@ const availableMetrics = ref([]);
 const plants = ref([]);
 const productionLines = ref([]);
 const machines = ref([]);
+
+const isCalculatingKpis = ref(false);
+const mtbf = ref(0);
+const mttr = ref(0);
+
+// Debounce Utility
+const debounce = (fn, delay) => {
+  let timeoutId;
+  return (...args) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => fn(...args), delay);
+  };
+};
+
+const fetchKpiProjections = async () => {
+  if (!store.machineIds || store.machineIds.length === 0) {
+    mtbf.value = 0;
+    mttr.value = 0;
+    return;
+  }
+  
+  isCalculatingKpis.value = true;
+  try {
+    const kpiService = new KpiProjectionApiService();
+    const response = await kpiService.getProjection(
+      store.machineIds, 
+      store.parameterId || 1, 
+      store.amount || 0,
+      store.tasks ? store.tasks.length : 0
+    );
+    
+    if (response && response.data) {
+      mtbf.value = response.data.mtbf;
+      mttr.value = response.data.mttr;
+    }
+  } catch (error) {
+    console.error("Error fetching KPI projections", error);
+  } finally {
+    isCalculatingKpis.value = false;
+  }
+};
+
+const debouncedFetchKpi = debounce(fetchKpiProjections, 800);
+
+watch(
+  [() => store.machineIds, () => store.parameterId, () => store.amount, () => store.tasks ? store.tasks.length : 0],
+  () => {
+    debouncedFetchKpi();
+  },
+  { deep: true }
+);
+
+const getMtbfColor = (val) => {
+  if (val > 200) return 'text-green-500';
+  if (val > 100) return 'text-yellow-500';
+  return 'text-red-500';
+};
+
+const getMttrColor = (val) => {
+  if (val < 5) return 'text-green-500';
+  if (val < 15) return 'text-yellow-500';
+  return 'text-red-500';
+};
 
 onMounted(async () => {
   store.reset();
