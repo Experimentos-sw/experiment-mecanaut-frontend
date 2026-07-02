@@ -13,6 +13,8 @@ import ToastService from 'primevue/toastservice';
 import Toast from 'primevue/toast';
 import ApiService from './core/services/api.service'
 
+import { createPinia } from 'pinia';
+
 const app = createApp(App)
 
 // Inicializar autenticación
@@ -22,10 +24,20 @@ apiService.initializeAuth();
 // Hacer el router disponible globalmente para el interceptor
 window.router = router;
 
+const pinia = createPinia();
+app.use(pinia)
 app.use(router)
 
 app
-    .use(PrimeVue, { ripple: true, theme: { preset: Lara}})
+    .use(PrimeVue, { 
+        ripple: true, 
+        theme: { 
+            preset: Lara,
+            options: {
+                darkModeSelector: '.app-dark'
+            }
+        }
+    })
     .component('pv-button', Button)
     .component('pv-card',Card)
     .component('pv-select-button', SelectButton)
