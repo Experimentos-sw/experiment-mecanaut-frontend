@@ -262,49 +262,67 @@
             <!-- Sección de productos utilizados -->
             <div class="products-section">
               <h4>Productos utilizados</h4>
-              <table class="products-table">
-                <thead>
-                  <tr>
-                    <th>Producto</th>
-                    <th>Cantidad</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="(product, i) in orderData[order.id].products" :key="i">
-                    <td>
-                      <select 
-                        v-model="product.partId" 
-                        class="product-select"
-                      >
-                        <option value="">Seleccionar producto ({{ inventoryParts.length }} disponibles)</option>
-                        <option v-for="part in inventoryParts" :key="part.id" :value="part.id">
-                          {{ part.name || part.code }} (Stock: {{ part.currentStock }})
-                        </option>
-                      </select>
-                    </td>
-                    <td>
-                      <input 
-                        type="number" 
-                        min="0" 
-                        v-model="product.quantity" 
-                        class="quantity-input"
-                        :max="getMaxQuantity(product.partId)"
-                      />
-                    </td>
-                    <td>
-                      <button type="button" @click="removeProduct(order.id, i)" class="remove-btn">🗑️</button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-              <button 
-                type="button" 
-                class="add-product-btn" 
-                @click="addProduct(order.id)"
-              >
-                Agregar producto
-              </button>
+              
+              <div class="no-products-toggle" style="margin-bottom: 1rem;">
+                <label class="checkbox-label">
+                  <input
+                      type="checkbox"
+                      v-model="orderData[order.id].noProductsUsed"
+                      @change="handleNoProductsChange(order.id)"
+                  />
+                  <span class="custom-checkbox"></span>
+                  <span>No se utilizaron productos en este mantenimiento</span>
+                </label>
+              </div>
+
+              <div :class="{'disabled-section': orderData[order.id].noProductsUsed}">
+                <table class="products-table">
+                  <thead>
+                    <tr>
+                      <th>Producto</th>
+                      <th>Cantidad</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(product, i) in orderData[order.id].products" :key="i">
+                      <td>
+                        <select 
+                          v-model="product.partId" 
+                          class="product-select"
+                          :disabled="orderData[order.id].noProductsUsed"
+                        >
+                          <option value="">Seleccionar producto ({{ inventoryParts.length }} disponibles)</option>
+                          <option v-for="part in inventoryParts" :key="part.id" :value="part.id">
+                            {{ part.name || part.code }} (Stock: {{ part.currentStock }})
+                          </option>
+                        </select>
+                      </td>
+                      <td>
+                        <input 
+                          type="number" 
+                          min="0" 
+                          v-model="product.quantity" 
+                          class="quantity-input"
+                          :max="getMaxQuantity(product.partId)"
+                          :disabled="orderData[order.id].noProductsUsed"
+                        />
+                      </td>
+                      <td>
+                        <button type="button" @click="removeProduct(order.id, i)" class="remove-btn" :disabled="orderData[order.id].noProductsUsed">🗑️</button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+                <button 
+                  type="button" 
+                  class="add-product-btn" 
+                  @click="addProduct(order.id)"
+                  :disabled="orderData[order.id].noProductsUsed"
+                >
+                  Agregar producto
+                </button>
+              </div>
             </div>
 
             <!-- Botones de acción -->
@@ -317,7 +335,7 @@
                 <button class="action-btn save-btn" @click="saveProgress(order.id)">
                   Guardar
                 </button>
-                <button class="action-btn finish-btn" @click="finishOrder(order.id)">
+                <button class="action-btn finish-btn" @click="startValidation(order.id)">
                   Marcar como Finalizada
                 </button>
               </div>
@@ -338,6 +356,35 @@
         <i class="pi pi-cog"></i>
         <p>Selecciona una planta, línea de producción y orden de trabajo para ver sus detalles.</p>
       </div>
+
+      <!-- Modal de Validación -->
+      <Dialog v-model:visible="showValidationPopup" modal header="Validando Cierre de Orden" :closable="!isValidating && validationFailed" :style="{ width: '400px' }">
+        <div class="validation-steps-container">
+          <div class="validation-step" :class="validationSteps.tasks">
+            <i class="pi" :class="{'pi-spin pi-spinner': validationSteps.tasks === 'validating', 'pi-check-circle': validationSteps.tasks === 'success', 'pi-times-circle': validationSteps.tasks === 'error', 'pi-circle': validationSteps.tasks === 'pending'}"></i>
+            <span>Verificando tareas completadas...</span>
+          </div>
+          <div class="validation-step" :class="validationSteps.observations">
+            <i class="pi" :class="{'pi-spin pi-spinner': validationSteps.observations === 'validating', 'pi-check-circle': validationSteps.observations === 'success', 'pi-times-circle': validationSteps.observations === 'error', 'pi-circle': validationSteps.observations === 'pending'}"></i>
+            <span>Verificando observaciones...</span>
+          </div>
+          <div class="validation-step" :class="validationSteps.products">
+            <i class="pi" :class="{'pi-spin pi-spinner': validationSteps.products === 'validating', 'pi-check-circle': validationSteps.products === 'success', 'pi-times-circle': validationSteps.products === 'error', 'pi-circle': validationSteps.products === 'pending'}"></i>
+            <span>Verificando repuestos utilizados...</span>
+          </div>
+        </div>
+        
+        <div v-if="validationFailed" class="validation-message validation-error">
+          <i class="pi pi-exclamation-triangle"></i>
+          <p>Faltan campos mínimos obligatorios. Por favor, revisa la orden y complétalos.</p>
+          <button class="btn-close-modal" @click="showValidationPopup = false">Cerrar y Corregir</button>
+        </div>
+        
+        <div v-if="validationSuccess" class="validation-message validation-success">
+          <i class="pi pi-check-circle"></i>
+          <p>Validación exitosa. Finalizando orden...</p>
+        </div>
+      </Dialog>
     </main>
   </div>
 </template>
@@ -350,6 +397,9 @@ import ExecutionService from '../services/execution.service';
 
 export default {
   name: 'ExecutionView',
+  components: {
+    Dialog
+  },
   setup() {
     const { t } = useI18n();
     const toast = useToast();
@@ -455,7 +505,7 @@ export default {
             orderData.value[order.id] = {
               images: [],
               products: [{ partId: '', quantity: 1 }],
-              // NUEVO: Guardamos las tareas aquí y las clonamos para que sean independientes
+              noProductsUsed: false,
               tasks: getTasksForOrder(order).map(t => ({ ...t })),
               isAreaCleaned: false,
               areToolsReturned: false,
@@ -503,20 +553,16 @@ export default {
             };
           }
         });
-        
-        // Cargar datos guardados si hay una línea de producción seleccionada
+
         if (selectedProductionLine.value) {
           await loadSavedData();
         }
       } catch (error) {
         console.error('Error loading work orders:', error);
-        workOrders.value = [];
-        availableWorkOrders.value = [];
       } finally {
         loadingOrders.value = false;
       }
     };
-    */
 
     const handlePlantChange = async () => {
       selectedProductionLine.value = null;
@@ -673,15 +719,8 @@ export default {
 
     const uploadImage = async (file, orderId, imageIndex) => {
       try {
-        console.log('Iniciando subida de imagen:', {
-          nombre: file.name,
-          tipo: file.type,
-          tamaño: file.size
-        });
-
         const response = await ExecutionService.uploadImage(file);
         if (response && response.url) {
-          console.log('Imagen subida exitosamente:', response.url);
           orderData.value[orderId].images[imageIndex].url = response.url;
           orderData.value[orderId].images[imageIndex].uploading = false;
         } else {
@@ -750,59 +789,7 @@ export default {
         console.error('Error cargando datos guardados:', error);
       }
     };
-    /*
-    const loadSavedData = async () => {
-      try {
-        // Obtener órdenes ejecutadas guardadas para esta línea de producción
-        const savedOrders = await ExecutionService.getExecutedWorkOrdersByProductionLine(selectedProductionLine.value);
-        
-        if (savedOrders && savedOrders.length > 0) {
-          // Tomar la más reciente (asumiendo que están ordenadas por fecha)
-          const mostRecentOrder = savedOrders[0];
-          
-          // Buscar la orden de trabajo correspondiente
-          const matchingWorkOrder = workOrders.value.find(order => order.code === mostRecentOrder.code);
-          
-          if (matchingWorkOrder) {
-            // Cargar tareas completadas
-            const tasksForOrder = getTasksForOrder(matchingWorkOrder);
-            const completedTaskIndexes = [];
-            
-            tasksForOrder.forEach((task, index) => {
-              if (mostRecentOrder.executedTasks.includes(task.label)) {
-                completedTaskIndexes.push(index);
-              }
-            });
-            
-            // Cargar productos utilizados
-            const savedProducts = mostRecentOrder.usedProducts.map(p => ({
-              partId: p.productId.toString(),
-              quantity: p.quantity
-            }));
-            
-            // Cargar imágenes
-            const savedImages = mostRecentOrder.files.map(url => ({
-              url: url,
-              preview: url, // Usar la URL como preview
-              uploading: false,
-              file: null
-            }));
-            
-            // Actualizar los datos de la orden
-            orderData.value[matchingWorkOrder.id] = {
-              images: savedImages,
-              products: savedProducts.length > 0 ? savedProducts : [{ partId: '', quantity: 1 }],
-              tasksCompleted: completedTaskIndexes,
-              savedExecutedOrderId: mostRecentOrder.id,
-              observations: mostRecentOrder.observations || ''
-            };
-          }
-        }
-      } catch (error) {
-        console.error('Error cargando datos guardados:', error);
-      }
-    };
-*/
+
     const saveProgress = async (orderId) => {
       try {
         const order = workOrders.value.find(o => o.id === orderId);
@@ -810,7 +797,6 @@ export default {
         // Preparar datos para guardar
         const executedOrderData = {
           code: order.code,
-          //aqui le falta enviar un string en "annotations"
           annotations: data.observations || '',
           executionDate: new Date().toISOString(),
           productionLineId: selectedProductionLine.value,
@@ -832,11 +818,74 @@ export default {
         // Guardar el ID de la orden ejecutada para poder cargarla después
         orderData.value[orderId].savedExecutedOrderId = response.id;
         
-        alert('Progreso guardado exitosamente');
+        toast.add({ severity: 'success', summary: 'Éxito', detail: 'Progreso guardado exitosamente', life: 3000 });
       } catch (error) {
         console.error('Error guardando progreso:', error);
-        alert('Error al guardar el progreso');
+        toast.add({ severity: 'error', summary: 'Error', detail: 'Error al guardar el progreso', life: 5000 });
       }
+    };
+
+    const startValidation = (orderId) => {
+      orderBeingValidated.value = orderId;
+      showValidationPopup.value = true;
+      isValidating.value = true;
+      validationFailed.value = false;
+      validationSuccess.value = false;
+      validationSteps.value = { tasks: 'pending', observations: 'pending', products: 'pending' };
+
+      const data = orderData.value[orderId];
+      
+      // Animación de validación
+      setTimeout(() => {
+        validationSteps.value.tasks = 'validating';
+        setTimeout(() => {
+          const hasUncompletedTasks = data.tasks.some(t => !t.completed);
+          validationSteps.value.tasks = hasUncompletedTasks ? 'error' : 'success';
+          
+          if (hasUncompletedTasks) {
+            isValidating.value = false;
+            validationFailed.value = true;
+            return;
+          }
+
+          validationSteps.value.observations = 'validating';
+          setTimeout(() => {
+            const hasNoObservations = !data.observations || data.observations.trim() === '';
+            validationSteps.value.observations = hasNoObservations ? 'error' : 'success';
+            
+            if (hasNoObservations) {
+              isValidating.value = false;
+              validationFailed.value = true;
+              return;
+            }
+
+            validationSteps.value.products = 'validating';
+            setTimeout(() => {
+              const hasUsedProducts = data.products.some(p => p.partId && p.quantity > 0);
+              const noProductsUsed = data.noProductsUsed;
+              const hasProductsValid = hasUsedProducts || noProductsUsed;
+              
+              validationSteps.value.products = hasProductsValid ? 'success' : 'error';
+              
+              if (!hasProductsValid) {
+                isValidating.value = false;
+                validationFailed.value = true;
+                return;
+              }
+
+              // Todos los pasos exitosos
+              validationSuccess.value = true;
+              isValidating.value = false;
+              
+              setTimeout(() => {
+                showValidationPopup.value = false;
+                finishOrder(orderId);
+              }, 1200);
+
+            }, 600); // Wait for products verification
+          }, 400); // Delay before checking products
+        }, 600); // Wait for observations verification
+      }, 400); // Delay before checking tasks
     };
 
     const finishOrder = async (orderId) => {
@@ -968,14 +1017,101 @@ export default {
       handleDrop,
       removeImage,
       loadSavedData,
+      startValidation,
       finishOrder,
       saveProgress,
-      t
+      t,
+      validationErrors,
+      handleNoProductsChange,
+      showValidationPopup,
+      isValidating,
+      validationFailed,
+      validationSuccess,
+      validationSteps
     };
   }
 };
 </script>
 
+<style scoped>
+/* Modal animations and styles */
+.validation-steps-container {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-top: 10px;
+}
+
+.validation-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background-color: var(--surface-100);
+  transition: all 0.3s ease;
+}
+
+.validation-step i {
+  font-size: 1.2rem;
+}
+
+.validation-step.pending i { color: #64748b; }
+.validation-step.validating i { color: #7670e7; }
+.validation-step.success { background-color: #f0fdf4; border: 1px solid #bbf7d0; }
+.validation-step.success i { color: #ade86eff; }
+.validation-step.error { background-color: #fef2f2; border: 1px solid #fecaca; }
+.validation-step.error i { color: #df5656ff; }
+
+.validation-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-top: 20px;
+  padding: 15px;
+  border-radius: 8px;
+  animation: fadeIn 0.4s ease;
+}
+
+.validation-message i {
+  font-size: 2rem;
+  margin-bottom: 10px;
+}
+
+.validation-error { background-color: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+.validation-error i { color: #ef4444; }
+
+.validation-success { background-color: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.validation-success i { color: #22c55e; }
+
+.btn-close-modal {
+  margin-top: 15px;
+  padding: 8px 16px;
+  border: none;
+  background-color: var(--red-500);
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.2s;
+}
+
+.btn-close-modal:hover {
+  background-color: var(--red-600);
+}
+
+.disabled-section {
+  opacity: 0.5;
+  pointer-events: none;
+  filter: grayscale(1);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+</style>
 <style scoped lang="scss">
 .container {
   padding: 20px;
