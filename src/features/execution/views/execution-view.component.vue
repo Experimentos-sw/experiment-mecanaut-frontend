@@ -159,48 +159,7 @@
               </div>
             </div>
 
-            <!-- Checklist Final -->
-            <div class="tasks-section" :class="{ 'has-error': validationErrors[order.id]?.checklist }">
-              <div class="section-header-error">
-                <h4>Checklist Final:</h4>
-                <span v-if="validationErrors[order.id]?.checklist" class="error-text">Falta marcar validaciones de la checklist</span>
-              </div>
-              <div class="tasks-list">
-                <div class="task-item">
-                  <label class="checkbox-label">
-                    <input
-                        type="checkbox"
-                        v-model="orderData[order.id].isAreaCleaned"
-                        @change="updateChecklistValidation(order.id)"
-                    />
-                    <span class="custom-checkbox"></span>
-                    <span>Área limpia</span>
-                  </label>
-                </div>
-                <div class="task-item">
-                  <label class="checkbox-label">
-                    <input
-                        type="checkbox"
-                        v-model="orderData[order.id].areToolsReturned"
-                        @change="updateChecklistValidation(order.id)"
-                    />
-                    <span class="custom-checkbox"></span>
-                    <span>Herramientas devueltas</span>
-                  </label>
-                </div>
-                <div class="task-item">
-                  <label class="checkbox-label">
-                    <input
-                        type="checkbox"
-                        v-model="orderData[order.id].isOperationsVerified"
-                        @change="updateChecklistValidation(order.id)"
-                    />
-                    <span class="custom-checkbox"></span>
-                    <span>Operaciones verificadas</span>
-                  </label>
-                </div>
-              </div>
-            </div>
+            <!-- Checklist Final eliminado, reemplazado por validación en modal -->
 
             <!-- Sección de observaciones -->
             <div class="observations-section" :class="{ 'has-error': validationErrors[order.id]?.observations }">
@@ -393,6 +352,7 @@
 import { ref, onMounted, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useToast } from 'primevue/usetoast';
+import Dialog from 'primevue/dialog';
 import ExecutionService from '../services/execution.service';
 
 export default {
@@ -418,6 +378,18 @@ export default {
     const inventoryParts = ref([]);
     const fileInputs = ref({});
     const validationErrors = ref({});
+    
+    // Estado del modal de validación
+    const showValidationPopup = ref(false);
+    const isValidating = ref(false);
+    const validationFailed = ref(false);
+    const validationSuccess = ref(false);
+    const validationSteps = ref({
+      tasks: 'pending',
+      observations: 'pending',
+      products: 'pending'
+    });
+    const orderBeingValidated = ref(null);
     
     // Datos de cada orden (observaciones, productos, tareas completadas)
     const orderData = ref({});
@@ -507,47 +479,6 @@ export default {
               products: [{ partId: '', quantity: 1 }],
               noProductsUsed: false,
               tasks: getTasksForOrder(order).map(t => ({ ...t })),
-              isAreaCleaned: false,
-              areToolsReturned: false,
-              isOperationsVerified: false,
-              tasksCompleted: [], // Inicializar el array de completadas
-              observations: ''
-            };
-          }
-        });
-
-        if (selectedProductionLine.value) {
-          await loadSavedData();
-        }
-      } catch (error) {
-        console.error('Error loading work orders:', error);
-      } finally {
-        loadingOrders.value = false;
-      }
-    };
-    /*
-    const loadWorkOrders = async () => {
-      try {
-        loadingOrders.value = true;
-        const data = await ExecutionService.getWorkOrdersWithMachineries(selectedProductionLine.value);
-        
-        // Actualizar las órdenes disponibles para el selector
-        availableWorkOrders.value = data;
-        
-        // Filtrar por orden seleccionada si hay una
-        let filteredData = data;
-        if (selectedWorkOrder.value) {
-          filteredData = data.filter(order => order.id === selectedWorkOrder.value);
-        }
-        
-        workOrders.value = filteredData;
-        
-        // Inicializar datos de cada orden
-        filteredData.forEach(order => {
-          if (!orderData.value[order.id]) {
-            orderData.value[order.id] = {
-              images: [],
-              products: [{ partId: '', quantity: 1 }],
               tasksCompleted: [],
               observations: ''
             };
@@ -563,7 +494,6 @@ export default {
         loadingOrders.value = false;
       }
     };
-
     const handlePlantChange = async () => {
       selectedProductionLine.value = null;
       selectedWorkOrder.value = null;
@@ -633,12 +563,9 @@ export default {
       }
     };
 
-    const updateChecklistValidation = (orderId) => {
-      if (validationErrors.value && validationErrors.value[orderId] && validationErrors.value[orderId].checklist) {
-        const data = orderData.value[orderId];
-        if (data.isAreaCleaned && data.areToolsReturned && data.isOperationsVerified) {
-          validationErrors.value[orderId].checklist = false;
-        }
+    const handleNoProductsChange = (orderId) => {
+      if (orderData.value[orderId].noProductsUsed) {
+        orderData.value[orderId].products = [{ partId: '', quantity: 1 }];
       }
     };
 
@@ -893,33 +820,6 @@ export default {
         const order = workOrders.value.find(o => o.id === orderId);
         const data = orderData.value[orderId];
         
-        // Validación visual
-        const hasUncompletedTasks = data.tasks.some(t => !t.completed);
-        const hasNoObservations = !data.observations || data.observations.trim() === '';
-        const hasUncompletedChecklist = !data.isAreaCleaned || !data.areToolsReturned || !data.isOperationsVerified;
-        
-        if (hasUncompletedTasks || hasNoObservations || hasUncompletedChecklist) {
-          validationErrors.value = {
-            ...validationErrors.value,
-            [orderId]: {
-              tasks: hasUncompletedTasks,
-              observations: hasNoObservations,
-              checklist: hasUncompletedChecklist
-            }
-          };
-          
-          const card = document.querySelector(`.order-card[data-order-id="${orderId}"]`);
-          if (card) {
-            card.classList.add('shake-animation');
-            setTimeout(() => card.classList.remove('shake-animation'), 500);
-          }
-          
-          return;
-        }
-        
-        // Si pasa validación, limpiar errores
-        validationErrors.value[orderId] = null;
-        
         // Preparar datos para completar la orden
         const completionData = {
           code: order.code,
@@ -931,9 +831,6 @@ export default {
             task: t.label,
             completed: t.completed
           })),
-          isAreaCleaned: data.isAreaCleaned,
-          areToolsReturned: data.areToolsReturned,
-          isOperationsVerified: data.isOperationsVerified,
           images: data.images ? data.images.map(img => img.url).filter(url => url) : [],
           products: data.products.filter(p => p.partId && p.quantity > 0).map(p => ({
             productId: parseInt(p.partId),
