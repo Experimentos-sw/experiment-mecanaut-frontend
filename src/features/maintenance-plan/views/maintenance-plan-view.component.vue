@@ -115,12 +115,13 @@
       @select="openPlanForm" 
     />
 
-    <!-- Modal de formulario para plan dinámico -->
-    <dynamic-plan-form 
-      v-if="showDynamicForm" 
-      @close="closeDynamicForm" 
-      @planCreated="onPlanCreated" 
-    />
+    <!-- Modal de formulario para plan dinámico (Wizard) -->
+    <div v-if="showDynamicForm" class="wizard-overlay">
+      <plan-wizard 
+        @close="closeDynamicForm" 
+        @planCreated="onPlanCreated" 
+      />
+    </div>
 
     <!-- Modal de formulario para plan estático -->
     <static-plan-form 
@@ -148,7 +149,7 @@ import AppInfoListItems from '../../../shared/components/information-panel/info-
 
 // Componentes para el flujo de creación de planes
 import ChoosePlanTypeModal from '../components/choose-plan-type-modal.component.vue';
-import DynamicPlanForm from '../components/dynamic-plan-form.component.vue';
+import PlanWizard from '../components/plan-wizard.component.vue';
 import StaticPlanForm from '../components/static-plan-form.component.vue';
 
 // Variables reactivas
@@ -474,6 +475,19 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.wizard-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
 .container {
   height: 100%;
   min-height: 100vh;
