@@ -129,6 +129,12 @@
       @close="closeStaticForm" 
       @planCreated="onPlanCreated" 
     />
+    <!-- Encuesta Post-Tarea -->
+    <Dialog v-model:visible="showSurveyDialog" :modal="false" position="bottomright" :closable="true" :dismissableMask="true" header="¿Qué tan fácil fue usar el Wizard?">
+      <div class="flex flex-column align-items-center gap-3 p-3">
+        <Rating v-model="surveyRating" @change="submitSurvey" :cancel="false" />
+      </div>
+    </Dialog>
   </div>
 </template>
 
@@ -139,6 +145,10 @@ import { maintenancePlanService } from '../services/maintenance-plan.service.js'
 import { maintenanceDynamicPlanService } from '../services/maintenance-dynamic-plan.service.js';
 import { MaintenancePlanModel, MaintenancePlanItemModel, MaintenancePlanTaskModel } from "../models/maintenance-plan.model.js";
 import { MaintenancePlanListResponse } from "../models/maintenance-plan.response.js";
+import { TelemetryService } from '../../../core/services/telemetry.service.js';
+
+import Dialog from 'primevue/dialog';
+import Rating from 'primevue/rating';
 
 // Componentes importados con rutas relativas correctas
 import AppRecordTable from '../../../shared/components/record-table.component.vue';
@@ -158,6 +168,25 @@ const filteredPlansData = ref([]);
 const showDetailPanel = ref(false);
 const selectedPlan = ref(null);
 const planTasksItems = ref([]);
+
+// Telemetría
+const showSurveyDialog = ref(false);
+const surveyRating = ref(0);
+const lastSurveyAction = ref('');
+const lastPlanId = ref(0);
+
+const submitSurvey = async () => {
+  if (surveyRating.value > 0) {
+    showSurveyDialog.value = false;
+    await TelemetryService.sendSurvey({
+      maintenancePlanId: lastPlanId.value || 0,
+      rating: surveyRating.value,
+      variant: 'guided_wizard',
+      action: lastSurveyAction.value
+    });
+    surveyRating.value = 0; // reset
+  }
+};
 const planInfoData = ref([]);
 const loading = ref(false);
 const error = ref('');
@@ -407,17 +436,23 @@ const openPlanForm = (planType) => {
 
 const closeDynamicForm = () => {
   showDynamicForm.value = false;
+  lastSurveyAction.value = 'ABANDON';
+  lastPlanId.value = 0;
+  showSurveyDialog.value = true;
 };
 
 const closeStaticForm = () => {
   showStaticForm.value = false;
 };
 
-// Manejar la creación de un plan
 const onPlanCreated = async (plan) => {
   // Recargar los planes después de crear uno nuevo
   await loadPlans();
   await loadDynamicPlans();
+  
+  lastSurveyAction.value = 'SUCCESS';
+  lastPlanId.value = plan?.id || 0;
+  showSurveyDialog.value = true;
 };
 
 const onRowClick = ({ row }) => { 
