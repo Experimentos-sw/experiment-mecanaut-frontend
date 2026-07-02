@@ -43,14 +43,9 @@ export default class ExecutionService {
    */
   static async getWorkOrders(productionLineId = null) {
     try {
-      let endpoint;
-      
-      if (productionLineId) {
-        endpoint = `work-orders/by-production-line/${productionLineId}`;
-      } else {
-        // Si no hay línea seleccionada, obtener todas las órdenes
-        endpoint = 'work-orders';
-      }
+      if (!productionLineId) return [];
+
+      let endpoint = `/work-orders/by-production-line-to-execute/${productionLineId}`;
       
       const response = await apiService.get(endpoint);
       return response.data;
@@ -125,7 +120,7 @@ export default class ExecutionService {
    */
   static async getInventoryParts(plantId) {
     try {
-      const response = await axios.get(`https://mecanautbk-fffeemd3bqdwebce.centralus-01.azurewebsites.net/api/inventory-parts?plantId=${plantId}`);
+      const response = await apiService.get(`/inventory-parts?plantId=${plantId}`);
       console.log('BBBBBBBBBB', response.data);
       return response.data;
     } catch (error) {
@@ -214,7 +209,10 @@ export default class ExecutionService {
         executedTasks: completionData.tasks.map(t => t.task),
         usedProducts: completionData.products,
         files: completionData.images || [],
-        workOrderId: orderId
+        workOrderId: orderId,
+        isAreaCleaned: completionData.isAreaCleaned,
+        areToolsReturned: completionData.areToolsReturned,
+        isOperationsVerified: completionData.isOperationsVerified
       };
 
       const response = await apiService.post('/executed-work-orders', executedOrderData);

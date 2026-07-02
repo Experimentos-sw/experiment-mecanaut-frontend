@@ -8,6 +8,7 @@ import InfoSection from '@/shared/components/information-panel/info-section.comp
 import ButtonComponent from '@/shared/components/button.component.vue';
 import WorkOrderFormModal from '../components/work-order-form-modal.component.vue';
 import AssignTechniciansModal from '../components/assign-technicians-modal.component.vue';
+import CloseWorkOrderModal from '../components/close-work-order-modal.component.vue';
 import { WorkOrderService } from '../services/work-order.service';
 import { PlantApiService } from '@/features/asset-management/services/plant-api.service';
 import { ProductionLineApiService } from '@/features/asset-management/services/production-line-api.service';
@@ -20,7 +21,8 @@ export default {
     InfoSection,
     ButtonComponent,
     WorkOrderFormModal,
-    AssignTechniciansModal
+    AssignTechniciansModal,
+    CloseWorkOrderModal
   },
   setup() {
     // Estado
@@ -30,6 +32,7 @@ export default {
     const showCreateModal = ref(false);
     const showEditModal = ref(false);
     const showAssignTechniciansModal = ref(false);
+    const showCloseOrderModal = ref(false);
     const selectedPlant = ref(null);
     const selectedProductionLine = ref(null);
     const loading = ref(false);
@@ -209,6 +212,13 @@ export default {
       closePanel();
     };
 
+    const handleComplete = async () => {
+      showCloseOrderModal.value = false;
+      selectedOrder.value = null;
+      await loadWorkOrders();
+      closePanel();
+    };
+
     const closePanel = () => {
       showInfoPanel.value = false;
       setTimeout(() => {
@@ -276,6 +286,8 @@ export default {
       handleNewClick,
       handlePlantChange,
       handleProductionLineChange,
+      handleComplete,
+      showCloseOrderModal,
       closePanel
     };
   }
@@ -365,6 +377,15 @@ export default {
 
           <div class="panel-actions">
             <ButtonComponent
+              v-if="selectedOrder.status !== 'Completed'"
+              variant="primary"
+              size="sm"
+              icon-left="pi pi-check"
+              @clicked="showCloseOrderModal = true"
+            >
+              Cerrar Orden
+            </ButtonComponent>
+            <ButtonComponent
               variant="warning"
               size="sm"
               icon-left="pi pi-times"
@@ -402,6 +423,13 @@ export default {
       :order-data="selectedOrder"
       @submit="handleAssignTechnicians"
       @cancel="showAssignTechniciansModal = false"
+    />
+
+    <CloseWorkOrderModal
+      v-if="showCloseOrderModal"
+      v-model="showCloseOrderModal"
+      :order-id="selectedOrder?.id"
+      @completed="handleComplete"
     />
   </div>
 </template>

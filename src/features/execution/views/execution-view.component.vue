@@ -139,8 +139,11 @@
             </div>
 
             <!-- Sección de tareas -->
-            <div class="tasks-section">
-              <h4>Tareas:</h4>
+            <div class="tasks-section" :class="{ 'has-error': validationErrors[order.id]?.tasks }">
+              <div class="section-header-error">
+                <h4>Tareas:</h4>
+                <span v-if="validationErrors[order.id]?.tasks" class="error-text">Faltan tareas por completar</span>
+              </div>
               <div class="tasks-list">
                 <div v-for="(task, i) in orderData[order.id].tasks" :key="i" class="task-item">
                   <label class="checkbox-label">
@@ -156,9 +159,55 @@
               </div>
             </div>
 
+            <!-- Checklist Final -->
+            <div class="tasks-section" :class="{ 'has-error': validationErrors[order.id]?.checklist }">
+              <div class="section-header-error">
+                <h4>Checklist Final:</h4>
+                <span v-if="validationErrors[order.id]?.checklist" class="error-text">Falta marcar validaciones de la checklist</span>
+              </div>
+              <div class="tasks-list">
+                <div class="task-item">
+                  <label class="checkbox-label">
+                    <input
+                        type="checkbox"
+                        v-model="orderData[order.id].isAreaCleaned"
+                        @change="updateChecklistValidation(order.id)"
+                    />
+                    <span class="custom-checkbox"></span>
+                    <span>Área limpia</span>
+                  </label>
+                </div>
+                <div class="task-item">
+                  <label class="checkbox-label">
+                    <input
+                        type="checkbox"
+                        v-model="orderData[order.id].areToolsReturned"
+                        @change="updateChecklistValidation(order.id)"
+                    />
+                    <span class="custom-checkbox"></span>
+                    <span>Herramientas devueltas</span>
+                  </label>
+                </div>
+                <div class="task-item">
+                  <label class="checkbox-label">
+                    <input
+                        type="checkbox"
+                        v-model="orderData[order.id].isOperationsVerified"
+                        @change="updateChecklistValidation(order.id)"
+                    />
+                    <span class="custom-checkbox"></span>
+                    <span>Operaciones verificadas</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
             <!-- Sección de observaciones -->
-            <div class="observations-section">
-              <h4>Observaciones</h4>
+            <div class="observations-section" :class="{ 'has-error': validationErrors[order.id]?.observations }">
+              <div class="section-header-error">
+                <h4>Observaciones</h4>
+                <span v-if="validationErrors[order.id]?.observations" class="error-text">Requerido</span>
+              </div>
               <textarea
                 v-model="orderData[order.id].observations"
                 class="observations-textarea"
@@ -296,12 +345,14 @@
 <script>
 import { ref, onMounted, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useToast } from 'primevue/usetoast';
 import ExecutionService from '../services/execution.service';
 
 export default {
   name: 'ExecutionView',
   setup() {
     const { t } = useI18n();
+    const toast = useToast();
     
     // Estado
     const workOrders = ref([]);
@@ -316,6 +367,7 @@ export default {
     const loadingOrders = ref(false);
     const inventoryParts = ref([]);
     const fileInputs = ref({});
+    const validationErrors = ref({});
     
     // Datos de cada orden (observaciones, productos, tareas completadas)
     const orderData = ref({});
@@ -405,6 +457,10 @@ export default {
               products: [{ partId: '', quantity: 1 }],
               // NUEVO: Guardamos las tareas aquí y las clonamos para que sean independientes
               tasks: getTasksForOrder(order).map(t => ({ ...t })),
+              isAreaCleaned: false,
+              areToolsReturned: false,
+              isOperationsVerified: false,
+              tasksCompleted: [], // Inicializar el array de completadas
               observations: ''
             };
           }
@@ -522,16 +578,21 @@ export default {
     };
 
     const updateTaskCompletion = (orderId, taskIndex, completed) => {
-      if (!orderData.value[orderId].tasksCompleted) {
-        orderData.value[orderId].tasksCompleted = [];
-      }
-      
-      if (completed) {
-        if (!orderData.value[orderId].tasksCompleted.includes(taskIndex)) {
-          orderData.value[orderId].tasksCompleted.push(taskIndex);
+      // Limpiar validación si ya están todas las tareas completadas
+      if (validationErrors.value && validationErrors.value[orderId] && validationErrors.value[orderId].tasks) {
+        const hasUncompletedTasks = orderData.value[orderId].tasks.some(t => !t.completed);
+        if (!hasUncompletedTasks) {
+          validationErrors.value[orderId].tasks = false;
         }
-      } else {
-        orderData.value[orderId].tasksCompleted = orderData.value[orderId].tasksCompleted.filter(i => i !== taskIndex);
+      }
+    };
+
+    const updateChecklistValidation = (orderId) => {
+      if (validationErrors.value && validationErrors.value[orderId] && validationErrors.value[orderId].checklist) {
+        const data = orderData.value[orderId];
+        if (data.isAreaCleaned && data.areToolsReturned && data.isOperationsVerified) {
+          validationErrors.value[orderId].checklist = false;
+        }
       }
     };
 
@@ -634,7 +695,7 @@ export default {
           ? 'Su sesión ha expirado. Por favor, vuelva a iniciar sesión.'
           : error.message || 'Error al subir la imagen. Por favor, intente nuevamente.';
         
-        alert(mensaje);
+        toast.add({ severity: 'error', summary: 'Error', detail: mensaje, life: 5000 });
         
         // Remover la imagen que falló
         orderData.value[orderId].images.splice(imageIndex, 1);
@@ -755,9 +816,7 @@ export default {
           productionLineId: selectedProductionLine.value,
           intervenedMachineIds: order.machineIds || [],
           assignedTechnicianIds: order.technicianIds || [],
-          executedTasks: getTasksForOrder(order)
-            .map((task, index) => data.tasksCompleted.includes(index) ? task.label : null)
-            .filter(task => task !== null),
+          executedTasks: data.tasks.filter(t => t.completed).map(t => t.label),
           usedProducts: data.products
             .filter(p => p.partId && p.quantity > 0)
             .map(p => ({
@@ -785,6 +844,33 @@ export default {
         const order = workOrders.value.find(o => o.id === orderId);
         const data = orderData.value[orderId];
         
+        // Validación visual
+        const hasUncompletedTasks = data.tasks.some(t => !t.completed);
+        const hasNoObservations = !data.observations || data.observations.trim() === '';
+        const hasUncompletedChecklist = !data.isAreaCleaned || !data.areToolsReturned || !data.isOperationsVerified;
+        
+        if (hasUncompletedTasks || hasNoObservations || hasUncompletedChecklist) {
+          validationErrors.value = {
+            ...validationErrors.value,
+            [orderId]: {
+              tasks: hasUncompletedTasks,
+              observations: hasNoObservations,
+              checklist: hasUncompletedChecklist
+            }
+          };
+          
+          const card = document.querySelector(`.order-card[data-order-id="${orderId}"]`);
+          if (card) {
+            card.classList.add('shake-animation');
+            setTimeout(() => card.classList.remove('shake-animation'), 500);
+          }
+          
+          return;
+        }
+        
+        // Si pasa validación, limpiar errores
+        validationErrors.value[orderId] = null;
+        
         // Preparar datos para completar la orden
         const completionData = {
           code: order.code,
@@ -792,10 +878,13 @@ export default {
           productionLineId: selectedProductionLine.value,
           machineIds: order.machineries?.map(m => m.id) || [],
           technicianIds: order.technicianIds || [],
-          tasks: getTasksForOrder(order).map((task, index) => ({
-            task: task.label,
-            completed: data.tasksCompleted.includes(index)
+          tasks: data.tasks.map(t => ({
+            task: t.label,
+            completed: t.completed
           })),
+          isAreaCleaned: data.isAreaCleaned,
+          areToolsReturned: data.areToolsReturned,
+          isOperationsVerified: data.isOperationsVerified,
           images: data.images ? data.images.map(img => img.url).filter(url => url) : [],
           products: data.products.filter(p => p.partId && p.quantity > 0).map(p => ({
             productId: parseInt(p.partId),
@@ -811,7 +900,8 @@ export default {
           await ExecutionService.decreaseInventoryPart(product.partId, product.quantity);
         }
 
-        alert('Orden finalizada exitosamente');
+        
+        toast.add({ severity: 'success', summary: 'Éxito', detail: 'Orden finalizada exitosamente', life: 3000 });
         
         // Recargar órdenes para actualizar el estado
         await loadWorkOrders();
@@ -825,7 +915,7 @@ export default {
           errorMessage = error.message;
         }
         
-        alert(errorMessage);
+        toast.add({ severity: 'error', summary: 'Error', detail: errorMessage, life: 5000 });
       }
     };
 
@@ -862,6 +952,7 @@ export default {
       orderData,
       defaultTasks,
       setFileInputRef,
+      validationErrors,
       handlePlantChange,
       handleProductionLineChange,
       handleWorkOrderChange,
@@ -915,7 +1006,37 @@ export default {
   background: var(--clr-bg);
   border-radius: 12px;
   padding: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Validation Errors */
+.has-error {
+  border: 1px solid var(--clr-danger, #ef4444);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  background-color: rgba(239, 68, 68, 0.05);
+}
+
+.section-header-error {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.error-text {
+  color: var(--clr-danger, #ef4444);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-5px); }
+  40%, 80% { transform: translateX(5px); }
+}
+
+.shake-animation {
+  animation: shake 0.5s ease-in-out;
 }
 
 .selectors-container {
