@@ -117,9 +117,10 @@
 
     <!-- Modal de formulario para plan dinámico (Wizard) -->
     <div v-if="showDynamicForm" class="wizard-overlay">
-      <plan-wizard 
-        @close="closeDynamicForm" 
-        @planCreated="onPlanCreated" 
+      <plan-wizard
+          @close="closeDynamicForm"
+          @planCreated="onPlanCreated"
+          @templateSaved="onTemplateSaved"
       />
     </div>
 
@@ -231,7 +232,10 @@ const searchFilters = [
   }
 ];
 
-
+const onTemplateSaved = () => {
+  // Mostrar notificación de éxito si tienes un sistema de notificaciones
+  console.log('Plantilla guardada exitosamente');
+};
 
 // Filtra los planes según la búsqueda y filtros activos
 const filterPlans = () => {
