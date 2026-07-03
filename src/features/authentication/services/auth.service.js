@@ -51,7 +51,8 @@ setAuthToken(token) {
         password: registrationData.password,
         email: registrationData.email,
         firstName: registrationData.firstName,
-        lastName: registrationData.lastName
+        lastName: registrationData.lastName,
+        role: registrationData.role
       };
 
       
