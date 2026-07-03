@@ -1,5 +1,5 @@
 <script>
-import { ref, reactive, computed } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import ThemeToggle from '../../../shared/components/theme-toggle.component.vue';
 import LanguageSwitcher from '../../../shared/components/language-switcher.component.vue';
@@ -23,6 +23,7 @@ export default {
     const isLoading = ref(false);
     const errorMessage = ref('');
     const isYearly = ref(false);
+    const isRoleDropdownOpen = ref(false);
 
     const registerForm = reactive({
       // Paso 1: Información de la Empresa
@@ -46,7 +47,8 @@ export default {
       email: '',
       password: '',
       confirmPassword: '',
-      terms: false
+      terms: false,
+      role: ''
     });
 
     const plans = [
@@ -132,6 +134,9 @@ export default {
         if (registerForm.confirmPassword && registerForm.password !== registerForm.confirmPassword) {
           result.confirmPassword = 'Las contraseñas no coinciden';
         }
+        if (!registerForm.role) {
+          result.role = 'Debes seleccionar un rol';
+        }
       }
 
       return result;
@@ -158,6 +163,11 @@ export default {
       registerForm.subscriptionPlanId = planId;
     };
 
+    const roleOptions = [
+      { value: 'administrador', label: t('auth.roleAdmin') },
+      { value: 'tecnico', label: t('auth.roleTechnician') }
+    ];
+
     const isStep1Valid = computed(() => {
       return registerForm.ruc && 
              registerForm.legalName && 
@@ -182,6 +192,7 @@ export default {
                registerForm.password &&
                registerForm.confirmPassword &&
                registerForm.password === registerForm.confirmPassword &&
+               registerForm.role &&
                registerForm.terms &&
                Object.keys(errors.value).length === 0;
       }
@@ -209,7 +220,8 @@ export default {
           password: registerForm.password,
           email: registerForm.email,
           firstName: registerForm.firstName,
-          lastName: registerForm.lastName
+          lastName: registerForm.lastName,
+          role: registerForm.role
         };
 
         await AuthService.register(registrationData);
@@ -221,6 +233,36 @@ export default {
       }
     };
 
+    // Funciones para el dropdown de roles
+    const toggleRoleDropdown = () => {
+      isRoleDropdownOpen.value = !isRoleDropdownOpen.value;
+    };
+
+    const selectRole = (value) => {
+      registerForm.role = value;
+      isRoleDropdownOpen.value = false;
+    };
+
+    const getRoleLabel = (value) => {
+      const option = roleOptions.find(opt => opt.value === value);
+      return option ? option.label : '';
+    };
+
+    const handleClickOutside = (event) => {
+      const dropdown = document.querySelector('.custom-dropdown');
+      if (dropdown && !dropdown.contains(event.target)) {
+        isRoleDropdownOpen.value = false;
+      }
+    };
+
+    onMounted(() => {
+      document.addEventListener('click', handleClickOutside);
+    });
+
+    onUnmounted(() => {
+      document.removeEventListener('click', handleClickOutside);
+    });
+
     return {
       t,
       currentStep,
@@ -231,6 +273,7 @@ export default {
       registerForm,
       errors,
       plans,
+      roleOptions,
       togglePassword,
       nextStep,
       previousStep,
@@ -238,7 +281,11 @@ export default {
       isStep1Valid,
       isFormValid,
       onSubmit,
-      isYearly
+      isYearly,
+      isRoleDropdownOpen,
+      toggleRoleDropdown,
+      selectRole,
+      getRoleLabel
     };
   },
 };
@@ -267,14 +314,14 @@ export default {
       <div class="login-form">
         <div class="form-content">
           <svg class="form-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 41 55" width="100%" height="100%">
-          <defs>
-            <linearGradient id="gradient" x1="100%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stop-color="var(--clr-primary-200)" />
-              <stop offset="100%" stop-color="var(--clr-primary-100)" />
-            </linearGradient>
-          </defs>
-          <path fill="url(#gradient)" d="M12.2119 27.7217C10.5205 29.561 9.49028 31.9892 9.49023 34.6523C9.49061 40.3932 14.27 45.0477 20.166 45.0479C26.062 45.0478 30.8424 40.3933 30.8428 34.6523C30.8427 31.9894 29.8122 29.5609 28.1211 27.7217H35.8271C36.042 28.3558 36.2234 29.0072 36.3672 29.6729L38.6113 30.2393C39.4989 30.4637 40.1209 31.2632 40.1211 32.1787V35.9883C40.1209 36.9063 39.4953 37.7067 38.6045 37.9287L36.0508 38.5645C35.7097 39.7293 35.2536 40.8424 34.6973 41.8887L36.5273 45.1162C36.9631 45.8855 36.8234 46.8435 36.1855 47.4648L33.2754 50.2988C32.653 50.9046 31.6999 51.0504 30.917 50.6592L27.5928 48.9951C26.4982 49.5671 25.3352 50.0174 24.1191 50.3271L23.5156 52.5967C23.2822 53.4721 22.489 54.0819 21.583 54.082H17.5449C16.6364 54.082 15.8416 53.4694 15.6104 52.5908L14.9131 49.9365C13.9389 49.5978 13.0047 49.1674 12.1201 48.6553L8.81836 50.5322C8.02328 50.984 7.01433 50.8573 6.36328 50.2236L3.54785 47.4814C2.89398 46.8446 2.76568 45.8572 3.23633 45.082L5.42383 41.4805C4.96946 40.5691 4.58994 39.6096 4.29492 38.6123L1.50977 37.9092C0.622107 37.6848 0.000211538 36.8853 0 35.9697V32.1602C0.000256578 31.2421 0.625714 30.4417 1.5166 30.2197L3.97949 29.6055C4.12085 28.9629 4.30007 28.3347 4.50781 27.7217H12.2119ZM23.1602 30.1562C23.8179 29.5159 24.8842 29.516 25.542 30.1562C25.6306 30.2425 25.7068 30.3368 25.7715 30.4355C25.973 30.6908 26.0937 31.0128 26.0938 31.3633V37.6123C26.0938 38.4405 25.4228 39.1121 24.5947 39.1123C23.7666 39.1121 23.0947 38.4405 23.0947 37.6123V34.8584L21.3105 36.5957C20.9627 36.9344 20.5005 37.0918 20.0449 37.0723C19.5898 37.0915 19.1279 36.934 18.7803 36.5957L17.0957 34.9551V37.6123C17.0957 38.4406 16.424 39.1123 15.5957 39.1123C14.7678 39.1119 14.0967 38.4403 14.0967 37.6123V31.6719C13.9763 31.1429 14.1262 30.5668 14.5488 30.1553C15.2065 29.5153 16.2729 29.5153 16.9307 30.1553L20.0449 33.1885L23.1602 30.1562ZM20.166 0C21.751 0 23.0361 1.25162 23.0361 2.79492C23.036 3.70802 22.5834 4.51556 21.8877 5.02539V8.08496H28.4746C31.8159 8.08502 34.6283 10.3416 35.4766 13.4131H35.96C37.0642 13.4133 37.9598 14.3088 37.96 15.4131V19.2383C37.9597 20.3425 37.0642 21.238 35.96 21.2383H35.6641V23.5908C35.664 24.1429 35.2161 24.5906 34.6641 24.5908H5.66797C5.11589 24.5906 4.66799 24.1429 4.66797 23.5908V21.2383H4.37207C3.26776 21.2381 2.37229 20.3426 2.37207 19.2383V15.4131C2.37227 14.3088 3.26775 13.4132 4.37207 13.4131H5.00781C5.85601 10.3415 8.66942 8.08506 12.0107 8.08496H18.4434V5.02539C17.7481 4.51552 17.2961 3.70768 17.2959 2.79492C17.296 1.2517 18.5811 0.000122358 20.166 0ZM13.2783 13.4131C11.6935 13.4132 10.4084 14.6649 10.4082 16.208C10.4085 17.7511 11.6936 19.0018 13.2783 19.002C14.8631 19.0019 16.1482 17.7511 16.1484 16.208C16.1483 14.6649 14.8632 13.4132 13.2783 13.4131ZM28.2012 13.4131C26.6166 13.4135 25.3322 14.6651 25.332 16.208C25.3323 17.7509 26.6167 19.0016 28.2012 19.002C29.786 19.002 31.071 17.7511 31.0713 16.208C31.0711 14.6648 29.7861 13.4131 28.2012 13.4131Z"></path>
-        </svg>
+            <defs>
+              <linearGradient id="gradient" x1="100%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="var(--clr-primary-200)" />
+                <stop offset="100%" stop-color="var(--clr-primary-100)" />
+              </linearGradient>
+            </defs>
+            <path fill="url(#gradient)" d="M12.2119 27.7217C10.5205 29.561 9.49028 31.9892 9.49023 34.6523C9.49061 40.3932 14.27 45.0477 20.166 45.0479C26.062 45.0478 30.8424 40.3933 30.8428 34.6523C30.8427 31.9894 29.8122 29.5609 28.1211 27.7217H35.8271C36.042 28.3558 36.2234 29.0072 36.3672 29.6729L38.6113 30.2393C39.4989 30.4637 40.1209 31.2632 40.1211 32.1787V35.9883C40.1209 36.9063 39.4953 37.7067 38.6045 37.9287L36.0508 38.5645C35.7097 39.7293 35.2536 40.8424 34.6973 41.8887L36.5273 45.1162C36.9631 45.8855 36.8234 46.8435 36.1855 47.4648L33.2754 50.2988C32.653 50.9046 31.6999 51.0504 30.917 50.6592L27.5928 48.9951C26.4982 49.5671 25.3352 50.0174 24.1191 50.3271L23.5156 52.5967C23.2822 53.4721 22.489 54.0819 21.583 54.082H17.5449C16.6364 54.082 15.8416 53.4694 15.6104 52.5908L14.9131 49.9365C13.9389 49.5978 13.0047 49.1674 12.1201 48.6553L8.81836 50.5322C8.02328 50.984 7.01433 50.8573 6.36328 50.2236L3.54785 47.4814C2.89398 46.8446 2.76568 45.8572 3.23633 45.082L5.42383 41.4805C4.96946 40.5691 4.58994 39.6096 4.29492 38.6123L1.50977 37.9092C0.622107 37.6848 0.000211538 36.8853 0 35.9697V32.1602C0.000256578 31.2421 0.625714 30.4417 1.5166 30.2197L3.97949 29.6055C4.12085 28.9629 4.30007 28.3347 4.50781 27.7217H12.2119ZM23.1602 30.1562C23.8179 29.5159 24.8842 29.516 25.542 30.1562C25.6306 30.2425 25.7068 30.3368 25.7715 30.4355C25.973 30.6908 26.0937 31.0128 26.0938 31.3633V37.6123C26.0938 38.4405 25.4228 39.1121 24.5947 39.1123C23.7666 39.1121 23.0947 38.4405 23.0947 37.6123V34.8584L21.3105 36.5957C20.9627 36.9344 20.5005 37.0918 20.0449 37.0723C19.5898 37.0915 19.1279 36.934 18.7803 36.5957L17.0957 34.9551V37.6123C17.0957 38.4406 16.424 39.1123 15.5957 39.1123C14.7678 39.1119 14.0967 38.4403 14.0967 37.6123V31.6719C13.9763 31.1429 14.1262 30.5668 14.5488 30.1553C15.2065 29.5153 16.2729 29.5153 16.9307 30.1553L20.0449 33.1885L23.1602 30.1562ZM20.166 0C21.751 0 23.0361 1.25162 23.0361 2.79492C23.036 3.70802 22.5834 4.51556 21.8877 5.02539V8.08496H28.4746C31.8159 8.08502 34.6283 10.3416 35.4766 13.4131H35.96C37.0642 13.4133 37.9598 14.3088 37.96 15.4131V19.2383C37.9597 20.3425 37.0642 21.238 35.96 21.2383H35.6641V23.5908C35.664 24.1429 35.2161 24.5906 34.6641 24.5908H5.66797C5.11589 24.5906 4.66799 24.1429 4.66797 23.5908V21.2383H4.37207C3.26776 21.2381 2.37229 20.3426 2.37207 19.2383V15.4131C2.37227 14.3088 3.26775 13.4132 4.37207 13.4131H5.00781C5.85601 10.3415 8.66942 8.08506 12.0107 8.08496H18.4434V5.02539C17.7481 4.51552 17.2961 3.70768 17.2959 2.79492C17.296 1.2517 18.5811 0.000122358 20.166 0ZM13.2783 13.4131C11.6935 13.4132 10.4084 14.6649 10.4082 16.208C10.4085 17.7511 11.6936 19.0018 13.2783 19.002C14.8631 19.0019 16.1482 17.7511 16.1484 16.208C16.1483 14.6649 14.8632 13.4132 13.2783 13.4131ZM28.2012 13.4131C26.6166 13.4135 25.3322 14.6651 25.332 16.208C25.3323 17.7509 26.6167 19.0016 28.2012 19.002C29.786 19.002 31.071 17.7511 31.0713 16.208C31.0711 14.6648 29.7861 13.4131 28.2012 13.4131Z"></path>
+          </svg>
           <h1 class="title">{{ t('auth.createAccount') }}</h1>
           <p class="subtitle">{{ t('auth.welcomeMessage') }}</p>
 
@@ -307,7 +354,6 @@ export default {
           <form @submit.prevent="onSubmit" class="register-form">
             <!-- Paso 1: Información de la Empresa -->
             <div v-if="currentStep === 1" class="step-content">
-
               <div class="form-grid">
                 <!-- Columna 1 -->
                 <div class="form-column">
@@ -490,6 +536,46 @@ export default {
               <p class="step-description">{{ t('auth.personalInfoDesc') }}</p>
 
               <div class="form-grid">
+                <!-- Role selector - Dropdown personalizado -->
+                <div class="form-column form-column-full">
+                  <div class="form-field role-selection">
+                    <label>{{ t('auth.selectRole') }}</label>
+                    <div class="custom-dropdown" :class="{ 'is-open': isRoleDropdownOpen, 'has-error': errors.role }">
+                      <div 
+                        class="dropdown-trigger" 
+                        @click="toggleRoleDropdown" 
+                        :class="{ 'has-value': registerForm.role }"
+                      >
+                        <span class="dropdown-value">
+                          {{ getRoleLabel(registerForm.role) || t('auth.selectRole') }}
+                        </span>
+                        <svg class="dropdown-arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
+                          <path d="M7 10l5 5 5-5z" fill="currentColor"/>
+                        </svg>
+                      </div>
+                      <div class="dropdown-menu" v-show="isRoleDropdownOpen">
+                        <div 
+                          v-for="option in roleOptions" 
+                          :key="option.value"
+                          class="dropdown-item"
+                          :class="{ 'is-selected': registerForm.role === option.value }"
+                          @click="selectRole(option.value)"
+                        >
+                          <span class="dropdown-item-icon" v-if="registerForm.role === option.value">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
+                              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" fill="currentColor"/>
+                            </svg>
+                          </span>
+                          <span class="dropdown-item-label">{{ option.label }}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <span v-if="errors.role" class="error-message">
+                      {{ errors.role }}
+                    </span>
+                  </div>
+                </div>
+
                 <!-- Columna 1 -->
                 <div class="form-column">
                   <div class="form-field">
@@ -800,6 +886,10 @@ input[type="url"] {
   margin: 1rem 0;
 }
 
+.form-column-full {
+  grid-column: 1 / -1;
+}
+
 .step-content {
   margin: 1rem 0;
 }
@@ -972,6 +1062,10 @@ input[type="url"] {
     gap: 0.5rem;
   }
   
+  .form-column-full {
+    grid-column: 1;
+  }
+  
   .skew-logo,
   .screws {
     display: none;
@@ -1127,6 +1221,209 @@ input[type="url"] {
 @media (max-width: 768px) {
   .plans-container {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Estilos para el dropdown personalizado */
+.custom-dropdown {
+  position: relative;
+  width: 100%;
+  
+  &.has-error {
+    .dropdown-trigger {
+      border-color: var(--clr-error);
+    }
+  }
+}
+
+.dropdown-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: 2px solid var(--clr-gris2);
+  background: var(--clr-white);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-height: 42px;
+  
+  &:hover {
+    border-color: var(--clr-primary-300);
+  }
+  
+  &:focus {
+    outline: none;
+    border-color: var(--clr-primary-300);
+    box-shadow: 0 0 0 3px rgba(var(--clr-primary-300-rgb), 0.1);
+  }
+  
+  &.has-value {
+    .dropdown-value {
+      color: var(--clr-text);
+    }
+  }
+  
+  .dropdown-value {
+    color: var(--clr-gris2);
+    font-size: 0.9rem;
+  }
+  
+  .dropdown-arrow {
+    transition: transform 0.3s ease;
+    color: var(--clr-gris2);
+    
+    .is-open & {
+      transform: rotate(180deg);
+      color: var(--clr-primary-300);
+    }
+  }
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--clr-white);
+  border-radius: 8px;
+  border: 1px solid var(--clr-gris2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+  animation: dropdownSlideIn 0.2s ease;
+  
+  @keyframes dropdownSlideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-8px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: var(--clr-gris2);
+    border-radius: 2px;
+  }
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  gap: 0.5rem;
+  color: var(--clr-text);
+  
+  &:hover {
+    background: var(--clr-primary-50);
+  }
+  
+  &.is-selected {
+    background: var(--clr-primary-100);
+    color: var(--clr-white);
+    
+    &:hover {
+      background: var(--clr-primary-200);
+    }
+  }
+  
+  .dropdown-item-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    flex-shrink: 0;
+    
+    svg {
+      color: var(--clr-white);
+    }
+  }
+  
+  .dropdown-item-label {
+    flex: 1;
+    font-size: 0.9rem;
+  }
+}
+
+/* Estilos para el campo de contraseña */
+.password-field {
+  position: relative;
+  width: 100%;
+  
+  input {
+    padding-right: 2.5rem;
+  }
+  
+  .toggle-password {
+    position: absolute;
+    right: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--clr-gris2);
+    cursor: pointer;
+    padding: 0.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    
+    &:hover {
+      color: var(--clr-primary-300);
+    }
+  }
+}
+
+/* Estilos para modo oscuro (si aplica) */
+@media (prefers-color-scheme: dark) {
+  .dropdown-trigger {
+    background: var(--clr-dark-bg);
+    border-color: var(--clr-dark-border);
+    
+    &:hover {
+      border-color: var(--clr-primary-300);
+    }
+    
+    .dropdown-value {
+      color: var(--clr-dark-text-muted);
+    }
+  }
+  
+  .dropdown-menu {
+    background: var(--clr-dark-bg);
+    border-color: var(--clr-dark-border);
+  }
+  
+  .dropdown-item {
+    color: var(--clr-dark-text);
+    
+    &:hover {
+      background: var(--clr-dark-hover);
+    }
+    
+    &.is-selected {
+      background: var(--clr-primary-100);
+      color: var(--clr-white);
+      
+      &:hover {
+        background: var(--clr-primary-200);
+      }
+    }
   }
 }
 </style>
