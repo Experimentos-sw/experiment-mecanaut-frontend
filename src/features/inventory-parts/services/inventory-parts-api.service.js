@@ -143,7 +143,7 @@ export class InventoryPartsApiService {
      */
     static async getPlants() {
         try {
-            const response = await http.get(`${baseEndpoint}/v1/plants`);
+            const response = await http.get(`${baseEndpoint}/plants`);
             return response.data;
         } catch (err) {
             console.error('Error cargando plantas:', err);

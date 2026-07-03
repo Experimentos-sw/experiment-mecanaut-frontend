@@ -145,19 +145,23 @@ export default {
 
         const handleCreate = async (formData) => {
             try {
-                // Agregar el plantId seleccionado
-                const partDataWithPlant = {
-                    ...formData,
-                    plantId: selectedPlantId.value
-                };
+                // El plantId ya viene en formData desde el modal
+                // Verificar que el plantId esté presente
+                if (!formData.plantId) {
+                console.error('Error: plantId no proporcionado');
+                alert('Por favor selecciona una planta antes de crear el repuesto');
+                return;
+                }
 
-                await InventoryPartsApiService.createPart(partDataWithPlant);
+                console.log('Creando repuesto con datos:', formData);
 
+                await InventoryPartsApiService.createPart(formData);
                 showCreateModal.value = false;
                 // Recargar datos
                 await loadInventoryParts();
             } catch (error) {
                 console.error('Error al crear:', error);
+                alert(`Error al crear el repuesto: ${error.message || 'Error desconocido'}`);
             }
         };
 
@@ -315,11 +319,11 @@ export default {
         <InventoryPartFormModal
             v-if="showCreateModal"
             :is-edit="false"
-            :part-data="selectedPart"
+            :part-data="null"
+            :current-plant-id="selectedPlantId"
             @submit="handleCreate"
             @cancel="() => {
                 showCreateModal = false;
-                selectedPart = null;
             }"
         />
 
@@ -327,6 +331,7 @@ export default {
             v-if="showEditModal"
             :is-edit="true"
             :part-data="selectedPart"
+            :current-plant-id="selectedPlantId"
             @submit="handleEdit"
             @delete="handleDelete"
             @cancel="showEditModal = false"

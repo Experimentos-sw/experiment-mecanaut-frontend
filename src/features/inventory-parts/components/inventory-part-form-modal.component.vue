@@ -1,77 +1,3 @@
-<script>
-import { ref, onMounted } from 'vue';
-import Button from '../../../shared/components/button.component.vue';
-
-export default {
-    name: 'InventoryPartFormModal',
-    
-    components: {
-        Button
-    },
-
-    props: {
-        isEdit: {
-            type: Boolean,
-            default: false
-        },
-        partData: {
-            type: Object,
-            default: () => ({})
-        }
-    },
-
-    emits: ['submit', 'cancel', 'delete'],
-
-    setup(props, { emit }) {
-        const formData = ref({
-            code: '',
-            name: '',
-            description: '',
-            currentStock: 0,
-            minStock: 0,
-            unitPrice: 0
-        });
-
-        const handleSubmit = () => {
-            emit('submit', {
-                ...formData.value,
-                id: props.partData?.id
-            });
-        };
-
-        const handleCancel = () => {
-            emit('cancel');
-        };
-
-        const handleDelete = () => {
-            if (confirm('¿Está seguro de eliminar este repuesto?')) {
-                emit('delete', props.partData.id);
-            }
-        };
-
-        onMounted(() => {
-            if (props.isEdit && props.partData) {
-                formData.value = {
-                    code: props.partData.code,
-                    name: props.partData.name,
-                    description: props.partData.description,
-                    currentStock: props.partData.currentStock,
-                    minStock: props.partData.minStock,
-                    unitPrice: props.partData.unitPrice
-                };
-            }
-        });
-
-        return {
-            formData,
-            handleSubmit,
-            handleCancel,
-            handleDelete
-        };
-    }
-}
-</script>
-
 <template>
     <div class="modal-overlay">
         <div class="modal-container">
@@ -82,6 +8,25 @@ export default {
             
             <div class="modal-content">
                 <form @submit.prevent="handleSubmit" class="form-container">
+                    <div class="form-group">
+                        <label for="plantId">Planta</label>
+                        <select 
+                            id="plantId"
+                            v-model="formData.plantId"
+                            required
+                            :disabled="isEdit"
+                            class="form-select"
+                        >
+                            <option value="" disabled>Selecciona una planta</option>
+                            <option 
+                                v-for="plant in plants" 
+                                :key="plant.id" 
+                                :value="plant.id"
+                            >
+                                {{ plant.name }}
+                            </option>
+                        </select>
+                    </div>
                     <div class="form-group">
                         <label for="code">Código</label>
                         <input 
@@ -174,6 +119,129 @@ export default {
     </div>
 </template>
 
+<script>
+import { ref, onMounted, watch } from 'vue';
+import Button from '../../../shared/components/button.component.vue';
+import { InventoryPartsApiService } from '../services/inventory-parts-api.service';
+
+export default {
+    name: 'InventoryPartFormModal',
+    
+    components: {
+        Button
+    },
+
+    props: {
+        isEdit: {
+            type: Boolean,
+            default: false
+        },
+        partData: {
+            type: Object,
+            default: () => ({})
+        },
+        currentPlantId: {
+            type: [Number, String],
+            default: null
+        }
+    },
+
+    emits: ['submit', 'cancel', 'delete'],
+
+    setup(props, { emit }) {
+        const plants = ref([]);
+        const formData = ref({
+            plantId: '',
+            code: '',
+            name: '',
+            description: '',
+            currentStock: 0,
+            minStock: 0,
+            unitPrice: 0
+        });
+
+        // Cargar plantas
+        const loadPlants = async () => {
+            try {
+                const data = await InventoryPartsApiService.getPlants();
+                plants.value = data;
+                
+                // Si hay una planta actual, seleccionarla
+                if (props.currentPlantId) {
+                    formData.value.plantId = props.currentPlantId;
+                } else if (data.length > 0 && !props.isEdit) {
+                    formData.value.plantId = data[0].id;
+                }
+            } catch (error) {
+                console.error('Error loading plants:', error);
+            }
+        };
+
+        const handleSubmit = () => {
+            // Validar que el plantId esté presente
+            if (!formData.value.plantId) {
+                alert('Por favor selecciona una planta');
+                return;
+            }
+            
+            emit('submit', {
+                ...formData.value,
+                id: props.partData?.id
+            });
+        };
+
+        const handleCancel = () => {
+            emit('cancel');
+        };
+
+        const handleDelete = () => {
+            if (confirm('¿Está seguro de eliminar este repuesto?')) {
+                emit('delete', props.partData.id);
+            }
+        };
+
+        // Cargar datos cuando se monta el componente o cambia partData
+        onMounted(() => {
+            loadPlants();
+            if (props.isEdit && props.partData) {
+                formData.value = {
+                    plantId: props.partData.plantId || props.currentPlantId || '',
+                    code: props.partData.code || '',
+                    name: props.partData.name || '',
+                    description: props.partData.description || '',
+                    currentStock: props.partData.currentStock || 0,
+                    minStock: props.partData.minStock || 0,
+                    unitPrice: props.partData.unitPrice || 0
+                };
+            }
+        });
+
+        // Watch para actualizar cuando cambia el partData
+        watch(() => props.partData, (newVal) => {
+            if (props.isEdit && newVal) {
+                formData.value = {
+                    plantId: newVal.plantId || props.currentPlantId || '',
+                    code: newVal.code || '',
+                    name: newVal.name || '',
+                    description: newVal.description || '',
+                    currentStock: newVal.currentStock || 0,
+                    minStock: newVal.minStock || 0,
+                    unitPrice: newVal.unitPrice || 0
+                };
+            }
+        }, { deep: true });
+
+        return {
+            plants,
+            formData,
+            handleSubmit,
+            handleCancel,
+            handleDelete
+        };
+    }
+}
+</script>
+
 <style scoped lang="scss">
 *{
     font-family: var(--font-family-base) !important;
@@ -257,7 +325,8 @@ export default {
 }
 
 .form-group input,
-.form-group textarea {
+.form-group textarea,
+.form-group .form-select {
     padding: 0.5rem;
     border: 1px solid var(--clr-primary-100);
     border-radius: var(--radius-sm);
@@ -266,7 +335,13 @@ export default {
     background-color: var(--clr-surface);
 }
 
-.form-group input:disabled {
+.form-group .form-select {
+    cursor: pointer;
+    appearance: auto;
+}
+
+.form-group input:disabled,
+.form-group .form-select:disabled {
     background-color: var(--clr-disabled);
     cursor: not-allowed;
 }
