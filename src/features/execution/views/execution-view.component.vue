@@ -344,6 +344,31 @@
           <p>Validación exitosa. Finalizando orden...</p>
         </div>
       </Dialog>
+      <!-- Alerta de inventario bloqueante -->
+      <Dialog v-model:visible="inventoryAlertVisible" modal header="Stock insuficiente" :closable="true" :style="{ width: '600px' }">
+        <div class="inventory-alert">
+          <p>Se detectaron repuestos con cantidad insuficiente en inventario. No es posible finalizar la orden hasta resolver los faltantes.</p>
+          <table class="inventory-shortages-table">
+            <thead>
+              <tr>
+                <th>Repuesto</th>
+                <th>Requerido</th>
+                <th>Disponible</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(s, idx) in inventoryShortages" :key="idx">
+                <td>{{ s.name }}</td>
+                <td>{{ s.required }}</td>
+                <td>{{ s.available }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="text-align: right; margin-top: 12px;">
+            <button class="btn-close-modal" @click="inventoryAlertVisible = false">Cerrar</button>
+          </div>
+        </div>
+      </Dialog>
     </main>
   </div>
 </template>
@@ -390,6 +415,9 @@ export default {
       products: 'pending'
     });
     const orderBeingValidated = ref(null);
+    // Estado para alerta de inventario (bloqueante)
+    const inventoryAlertVisible = ref(false);
+    const inventoryShortages = ref([]);
     
     // Datos de cada orden (observaciones, productos, tareas completadas)
     const orderData = ref({});
@@ -768,7 +796,7 @@ export default {
         setTimeout(() => {
           const hasUncompletedTasks = data.tasks.some(t => !t.completed);
           validationSteps.value.tasks = hasUncompletedTasks ? 'error' : 'success';
-          
+
           if (hasUncompletedTasks) {
             isValidating.value = false;
             validationFailed.value = true;
@@ -779,7 +807,7 @@ export default {
           setTimeout(() => {
             const hasNoObservations = !data.observations || data.observations.trim() === '';
             validationSteps.value.observations = hasNoObservations ? 'error' : 'success';
-            
+
             if (hasNoObservations) {
               isValidating.value = false;
               validationFailed.value = true;
@@ -791,9 +819,38 @@ export default {
               const hasUsedProducts = data.products.some(p => p.partId && p.quantity > 0);
               const noProductsUsed = data.noProductsUsed;
               const hasProductsValid = hasUsedProducts || noProductsUsed;
-              
+
+              // If there are used products, cross-check inventory for shortages
+              if (hasUsedProducts) {
+                const shortages = [];
+                for (const p of data.products.filter(x => x.partId && x.quantity > 0)) {
+                  const partIdNum = parseInt(p.partId);
+                  const part = inventoryParts.value.find(ip => parseInt(ip.id) === partIdNum || ip.id === p.partId);
+                  const available = part ? (part.currentStock ?? 0) : 0;
+                  const required = parseInt(p.quantity) || 0;
+                  if (required > available) {
+                    shortages.push({
+                      partId: partIdNum,
+                      name: part?.name || part?.code || String(partIdNum),
+                      required,
+                      available
+                    });
+                  }
+                }
+
+                if (shortages.length > 0) {
+                  // Found shortages — block completion and show alert dialog with details
+                  validationSteps.value.products = 'error';
+                  isValidating.value = false;
+                  validationFailed.value = true;
+                  inventoryShortages.value = shortages;
+                  inventoryAlertVisible.value = true;
+                  return;
+                }
+              }
+
               validationSteps.value.products = hasProductsValid ? 'success' : 'error';
-              
+
               if (!hasProductsValid) {
                 isValidating.value = false;
                 validationFailed.value = true;
@@ -803,7 +860,7 @@ export default {
               // Todos los pasos exitosos
               validationSuccess.value = true;
               isValidating.value = false;
-              
+
               setTimeout(() => {
                 showValidationPopup.value = false;
                 finishOrder(orderId);
@@ -924,7 +981,9 @@ export default {
       isValidating,
       validationFailed,
       validationSuccess,
-      validationSteps
+      validationSteps,
+      inventoryAlertVisible,
+      inventoryShortages
     };
   }
 };
