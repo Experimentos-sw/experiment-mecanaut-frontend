@@ -99,7 +99,7 @@
             <!-- Header de la orden -->
             <div class="order-header">
               <h3>{{ order.code }}</h3>
-              <span class="order-status" :class="`status-${order.status?.toLowerCase()}`">
+              <span class="order-status" :class="getStatusClass(order.status)">
                 {{ getStatusText(order.status) }}
               </span>
             </div>
@@ -495,7 +495,7 @@ export default {
 
         let filteredData = data;
         if (selectedWorkOrder.value) {
-          filteredData = data.filter(order => order.id === selectedWorkOrder.value);
+          filteredData = data.filter(order => Number(order.id) === Number(selectedWorkOrder.value));
         }
 
         workOrders.value = filteredData;
@@ -556,11 +556,25 @@ export default {
       });
     };
 
+    const getStatusKey = (status) => String(status || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]/g, '');
+
+    const getStatusClass = (status) => {
+      switch (getStatusKey(status)) {
+        case 'inprogress':
+          return 'status-in-progress';
+        default:
+          return `status-${String(status || 'pending').trim().toLowerCase()}`;
+      }
+    };
+
     const getStatusText = (status) => {
-      switch (status?.toLowerCase()) {
+      switch (getStatusKey(status)) {
         case 'pending':
           return 'Pendiente';
-        case 'in-progress':
+        case 'inprogress':
           return 'En Proceso';
         case 'completed':
           return 'Completado';
@@ -612,6 +626,26 @@ export default {
     };
 
     // Función para guardar refs dinámicos
+    const getUsedProducts = (products = []) => {
+      const productsByPartId = new Map();
+
+      products
+        .filter(p => p.partId && Number(p.quantity) > 0)
+        .forEach(p => {
+          const productId = parseInt(p.partId);
+          const quantity = parseInt(p.quantity);
+
+          if (!Number.isInteger(productId) || !Number.isInteger(quantity)) return;
+
+          productsByPartId.set(productId, (productsByPartId.get(productId) || 0) + quantity);
+        });
+
+      return Array.from(productsByPartId, ([productId, quantity]) => ({
+        productId,
+        quantity
+      }));
+    };
+
     const setFileInputRef = (orderId) => (el) => {
       if (el) fileInputs.value[orderId] = el
     }
@@ -758,12 +792,7 @@ export default {
           intervenedMachineIds: order.machineIds || [],
           assignedTechnicianIds: order.technicianIds || [],
           executedTasks: data.tasks.filter(t => t.completed).map(t => t.label),
-          usedProducts: data.products
-            .filter(p => p.partId && p.quantity > 0)
-            .map(p => ({
-              productId: parseInt(p.partId),
-              quantity: parseInt(p.quantity)
-            })),
+          usedProducts: getUsedProducts(data.products),
           files: data.images ? data.images.map(img => img.url).filter(url => url) : [],
           observations: data.observations || ''
         };
@@ -823,11 +852,11 @@ export default {
               // If there are used products, cross-check inventory for shortages
               if (hasUsedProducts) {
                 const shortages = [];
-                for (const p of data.products.filter(x => x.partId && x.quantity > 0)) {
-                  const partIdNum = parseInt(p.partId);
-                  const part = inventoryParts.value.find(ip => parseInt(ip.id) === partIdNum || ip.id === p.partId);
+                for (const p of getUsedProducts(data.products)) {
+                  const partIdNum = p.productId;
+                  const part = inventoryParts.value.find(ip => parseInt(ip.id) === partIdNum);
                   const available = part ? (part.currentStock ?? 0) : 0;
-                  const required = parseInt(p.quantity) || 0;
+                  const required = p.quantity;
                   if (required > available) {
                     shortages.push({
                       partId: partIdNum,
@@ -889,20 +918,13 @@ export default {
             completed: t.completed
           })),
           images: data.images ? data.images.map(img => img.url).filter(url => url) : [],
-          products: data.products.filter(p => p.partId && p.quantity > 0).map(p => ({
-            productId: parseInt(p.partId),
-            quantity: parseInt(p.quantity)
-          }))
+          products: getUsedProducts(data.products)
         };
 
         // Completar la orden
         await ExecutionService.completeWorkOrder(orderId, completionData);
 
         // Reducir stock de productos utilizados
-        for (const product of data.products.filter(p => p.partId && p.quantity > 0)) {
-          await ExecutionService.decreaseInventoryPart(product.partId, product.quantity);
-        }
-
         
         toast.add({ severity: 'success', summary: 'Éxito', detail: 'Orden finalizada exitosamente', life: 3000 });
         
@@ -960,6 +982,7 @@ export default {
       handleProductionLineChange,
       handleWorkOrderChange,
       formatDate,
+      getStatusClass,
       getStatusText,
       getTasksForOrder,
       updateTaskCompletion,
