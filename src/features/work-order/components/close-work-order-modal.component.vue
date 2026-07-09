@@ -49,6 +49,7 @@ import Button from 'primevue/button';
 import Checkbox from 'primevue/checkbox';
 import Message from 'primevue/message';
 import { WorkOrderService } from '../services/work-order.service';
+import { TelemetryService } from '@/core/services/telemetry.service';
 
 const props = defineProps({
   modelValue: {
@@ -73,10 +74,26 @@ const checklist = ref({
   isOperationsVerified: false
 });
 
+const startTime = ref(Date.now());
+let isSubmitted = false;
+
 watch(() => props.modelValue, (newVal) => {
   visible.value = newVal;
   if (newVal) {
     resetForm();
+    startTime.value = Date.now();
+    isSubmitted = false;
+  } else if (!isSubmitted) {
+    // Si se cierra el modal sin enviar
+    const duration = Math.floor((Date.now() - startTime.value) / 1000);
+    TelemetryService.recordMetric({
+      experimentName: 'US08-R',
+      variant: 'Treatment',
+      actionType: 'Order_Start_Attempt',
+      durationMilliseconds: duration * 1000,
+      isSuccess: false,
+      additionalData: JSON.stringify({ orderId: props.orderId, abandoned: true })
+    });
   }
 });
 
@@ -109,12 +126,34 @@ const submit = async () => {
   loading.value = true;
   errorMessage.value = '';
   
+  const duration = Math.floor((Date.now() - startTime.value) / 1000);
+
   try {
     await WorkOrderService.completeOrder(props.orderId, checklist.value);
+    isSubmitted = true;
+    
+    TelemetryService.recordMetric({
+        experimentName: 'US08-R',
+        variant: 'Treatment',
+        actionType: 'Order_Start_Attempt',
+        durationMilliseconds: duration * 1000,
+        isSuccess: true,
+        additionalData: JSON.stringify({ orderId: props.orderId })
+    });
+
     emit('completed');
     closeModal();
   } catch (error) {
     errorMessage.value = error.response?.data?.message || 'Error al completar la orden';
+    
+    TelemetryService.recordMetric({
+        experimentName: 'US08-R',
+        variant: 'Treatment',
+        actionType: 'Order_Start_Attempt',
+        durationMilliseconds: duration * 1000,
+        isSuccess: false,
+        additionalData: JSON.stringify({ orderId: props.orderId, error: errorMessage.value })
+    });
   } finally {
     loading.value = false;
   }
