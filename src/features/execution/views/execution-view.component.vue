@@ -379,6 +379,7 @@ import { useI18n } from 'vue-i18n';
 import { useToast } from 'primevue/usetoast';
 import Dialog from 'primevue/dialog';
 import ExecutionService from '../services/execution.service';
+import { TelemetryService } from '@/core/services/telemetry.service';
 
 export default {
   name: 'ExecutionView',
@@ -403,6 +404,7 @@ export default {
     const inventoryParts = ref([]);
     const fileInputs = ref({});
     const validationErrors = ref({});
+    const executionStartTimes = ref({});
     
     // Estado del modal de validación
     const showValidationPopup = ref(false);
@@ -501,6 +503,10 @@ export default {
         workOrders.value = filteredData;
 
         filteredData.forEach(order => {
+          if (!executionStartTimes.value[order.id]) {
+            executionStartTimes.value[order.id] = Date.now();
+          }
+
           if (!orderData.value[order.id]) {
             orderData.value[order.id] = {
               images: [],
@@ -809,6 +815,18 @@ export default {
       }
     };
 
+    const recordValidationFailure = (orderId, reason) => {
+      const duration = Math.floor((Date.now() - executionStartTimes.value[orderId]) / 1000);
+      TelemetryService.recordMetric({
+          experimentName: 'US08-R',
+          variant: 'Treatment',
+          actionType: 'Order_Validation_Failed',
+          durationMilliseconds: duration * 1000,
+          isSuccess: false,
+          additionalData: JSON.stringify({ orderId, reason })
+      });
+    };
+
     const startValidation = (orderId) => {
       orderBeingValidated.value = orderId;
       showValidationPopup.value = true;
@@ -829,6 +847,7 @@ export default {
           if (hasUncompletedTasks) {
             isValidating.value = false;
             validationFailed.value = true;
+            recordValidationFailure(orderId, 'UncompletedTasks');
             return;
           }
 
@@ -840,6 +859,7 @@ export default {
             if (hasNoObservations) {
               isValidating.value = false;
               validationFailed.value = true;
+              recordValidationFailure(orderId, 'NoObservations');
               return;
             }
 
@@ -874,6 +894,16 @@ export default {
                   validationFailed.value = true;
                   inventoryShortages.value = shortages;
                   inventoryAlertVisible.value = true;
+                  recordValidationFailure(orderId, 'InventoryShortage');
+                  
+                  TelemetryService.recordMetric({
+                    experimentName: 'US11-R',
+                    variant: 'Treatment',
+                    actionType: 'Order_Start_Inventory_Warning_Shown',
+                    durationMilliseconds: 0,
+                    isSuccess: true,
+                    additionalData: JSON.stringify({ orderId, shortages: shortages.length })
+                  });
                   return;
                 }
               }
@@ -883,12 +913,22 @@ export default {
               if (!hasProductsValid) {
                 isValidating.value = false;
                 validationFailed.value = true;
+                recordValidationFailure(orderId, 'NoProductsSelected');
                 return;
               }
 
               // Todos los pasos exitosos
               validationSuccess.value = true;
               isValidating.value = false;
+
+              TelemetryService.recordMetric({
+                experimentName: 'US11-R',
+                variant: 'Treatment',
+                actionType: 'Order_Start_Inventory_OK',
+                durationMilliseconds: 0,
+                isSuccess: true,
+                additionalData: JSON.stringify({ orderId })
+              });
 
               setTimeout(() => {
                 showValidationPopup.value = false;
@@ -924,6 +964,17 @@ export default {
         // Completar la orden
         await ExecutionService.completeWorkOrder(orderId, completionData);
 
+        const duration = Math.floor((Date.now() - executionStartTimes.value[orderId]) / 1000);
+        
+        TelemetryService.recordMetric({
+            experimentName: 'US08-R',
+            variant: 'Treatment',
+            actionType: 'Order_Start_Attempt',
+            durationMilliseconds: duration * 1000,
+            isSuccess: true,
+            additionalData: JSON.stringify({ orderId: orderId, code: order.code })
+        });
+
         // Reducir stock de productos utilizados
         
         toast.add({ severity: 'success', summary: 'Éxito', detail: 'Orden finalizada exitosamente', life: 3000 });
@@ -939,6 +990,16 @@ export default {
         } else if (error.message) {
           errorMessage = error.message;
         }
+        
+        const duration = Math.floor((Date.now() - executionStartTimes.value[orderId]) / 1000);
+        TelemetryService.recordMetric({
+            experimentName: 'US08-R',
+            variant: 'Treatment',
+            actionType: 'Order_Start_Attempt',
+            durationMilliseconds: duration * 1000,
+            isSuccess: false,
+            additionalData: JSON.stringify({ orderId: orderId, error: errorMessage })
+        });
         
         toast.add({ severity: 'error', summary: 'Error', detail: errorMessage, life: 5000 });
       }

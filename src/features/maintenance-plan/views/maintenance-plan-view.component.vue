@@ -175,6 +175,8 @@ const showSurveyDialog = ref(false);
 const surveyRating = ref(0);
 const lastSurveyAction = ref('');
 const lastPlanId = ref(0);
+const surveyDuration = ref(null);
+const surveyLastStep = ref(null);
 
 const submitSurvey = async () => {
   if (surveyRating.value > 0) {
@@ -183,9 +185,13 @@ const submitSurvey = async () => {
       maintenancePlanId: lastPlanId.value || 0,
       rating: surveyRating.value,
       variant: 'guided_wizard',
-      action: lastSurveyAction.value
+      action: lastSurveyAction.value,
+      durationSeconds: surveyDuration.value,
+      lastStep: surveyLastStep.value
     });
     surveyRating.value = 0; // reset
+    surveyDuration.value = null;
+    surveyLastStep.value = null;
   }
 };
 const planInfoData = ref([]);
@@ -438,10 +444,19 @@ const openPlanForm = (planType) => {
   closeChoosePlanModal();
 };
 
-const closeDynamicForm = () => {
+const closeDynamicForm = (payload) => {
   showDynamicForm.value = false;
-  lastSurveyAction.value = 'ABANDON';
+  
+  if (payload && payload.isSubmit) return;
+
+  lastSurveyAction.value = 'abandoned';
   lastPlanId.value = 0;
+  
+  if (payload && payload.durationSeconds !== undefined) {
+    surveyDuration.value = payload.durationSeconds;
+    surveyLastStep.value = payload.lastStep;
+  }
+  
   showSurveyDialog.value = true;
 };
 
@@ -449,13 +464,19 @@ const closeStaticForm = () => {
   showStaticForm.value = false;
 };
 
-const onPlanCreated = async (plan) => {
+const onPlanCreated = async (plan, payload) => {
   // Recargar los planes después de crear uno nuevo
   await loadPlans();
   await loadDynamicPlans();
   
-  lastSurveyAction.value = 'SUCCESS';
+  lastSurveyAction.value = 'finished';
   lastPlanId.value = plan?.id || 0;
+  
+  if (payload && payload.durationSeconds !== undefined) {
+    surveyDuration.value = payload.durationSeconds;
+    surveyLastStep.value = payload.lastStep;
+  }
+  
   showSurveyDialog.value = true;
 };
 

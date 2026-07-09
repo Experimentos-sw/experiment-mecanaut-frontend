@@ -13,6 +13,7 @@ import InventoryAlertModalComponent from '../components/inventory-alert-modal.co
 import { WorkOrderService } from '../services/work-order.service';
 import { PlantApiService } from '@/features/asset-management/services/plant-api.service';
 import { ProductionLineApiService } from '@/features/asset-management/services/production-line-api.service';
+import { TelemetryService } from '@/core/services/telemetry.service';
 
 export default {
   components: {
@@ -235,8 +236,27 @@ export default {
         if (hasMissingParts) {
           missingParts.value = verification.filter(part => !part.hasSufficientStock);
           showInventoryAlertModal.value = true;
+          
+          TelemetryService.recordMetric({
+            experimentName: 'US11-R',
+            variant: 'Treatment',
+            actionType: 'Order_Start_Inventory_Warning_Shown',
+            durationMilliseconds: 0,
+            isSuccess: true,
+            additionalData: JSON.stringify({ orderId, missingParts: missingParts.value.length })
+          });
+          
           return;
         }
+
+        TelemetryService.recordMetric({
+          experimentName: 'US11-R',
+          variant: 'Treatment',
+          actionType: 'Order_Start_Inventory_OK',
+          durationMilliseconds: 0,
+          isSuccess: true,
+          additionalData: JSON.stringify({ orderId })
+        });
 
         // 2. Si no hay faltantes, iniciar la orden
         await WorkOrderService.startOrder(orderId);

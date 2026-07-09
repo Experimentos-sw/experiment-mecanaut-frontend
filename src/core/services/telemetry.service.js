@@ -25,4 +25,16 @@ export class TelemetryService {
             console.error("Telemetry failed. Silent catch to prevent blocking UI.", error);
         }
     }
+
+    /**
+     * Registra una métrica de telemetría de experimentos
+     * @param {Object} payload { experimentName, variant, actionType, durationMilliseconds, isSuccess, additionalData }
+     */
+    static async recordMetric(payload) {
+        try {
+            await http.post('/experiment-telemetry', payload);
+        } catch (error) {
+            console.error("Experiment telemetry failed.", error);
+        }
+    }
 }

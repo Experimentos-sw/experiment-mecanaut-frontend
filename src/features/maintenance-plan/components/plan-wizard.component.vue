@@ -57,11 +57,11 @@
             @click="openSaveTemplateDialog"
             :disabled="!store.canSubmit"
         />
-        <Button icon="pi pi-times" rounded text @click="$emit('close')" aria-label="Cancelar" />
+        <Button icon="pi pi-times" rounded text @click="closeWizard" aria-label="Cancelar" />
       </div>
     </div>
 
-    <Stepper value="1">
+    <Stepper v-model:value="currentStep">
       <StepList>
         <Step value="1">Información</Step>
         <Step value="2">Parámetros</Step>
@@ -274,6 +274,7 @@ import { ProductionLineApiService } from '../../asset-management/services/produc
 import { MachineryApiService } from '../../asset-management/services/machinery-api.service.js';
 import { KpiProjectionApiService } from '../services/kpi-projection-api.service.js';
 import { maintenancePlanTemplateService } from '../services/maintenance-plan-template.service.js';
+import { TelemetryService } from '@/core/services/telemetry.service';
 
 import Stepper from 'primevue/stepper';
 import StepList from 'primevue/steplist';
@@ -291,7 +292,6 @@ import Textarea from 'primevue/textarea';
 
 const emit = defineEmits(['close', 'planCreated', 'templateSaved']);
 
-// Props
 const props = defineProps({
   showTemplateSelector: {
     type: Boolean,
@@ -302,6 +302,40 @@ const props = defineProps({
     default: true
   }
 });
+
+const currentStep = ref('1');
+const startTime = ref(Date.now());
+
+const getStepName = (stepValue) => {
+  switch(stepValue) {
+    case '1': return 'Información';
+    case '2': return 'Parámetros';
+    case '3': return 'Ubicación';
+    case '4': return 'Máquinas';
+    case '5': return 'Tareas';
+    default: return 'Desconocido';
+  }
+};
+
+const getDurationAndStep = () => {
+  const duration = Math.floor((Date.now() - startTime.value) / 1000);
+  return { durationSeconds: duration, lastStep: getStepName(currentStep.value) };
+};
+
+const closeWizard = () => {
+  const stats = getDurationAndStep();
+  
+  TelemetryService.recordMetric({
+    experimentName: 'US09-R | US07-R',
+    variant: 'Treatment',
+    actionType: 'Plan_Creation_Abandoned',
+    durationMilliseconds: stats.durationSeconds * 1000,
+    isSuccess: false,
+    additionalData: JSON.stringify({ lastStep: stats.lastStep })
+  });
+  
+  emit('close', stats);
+};
 
 const store = useMaintenancePlanWizardStore();
 
@@ -440,6 +474,15 @@ const loadTemplate = async () => {
           await loadMachinesForLine(store.productionLineId);
         }
       }
+
+      TelemetryService.recordMetric({
+        experimentName: 'US35-R',
+        variant: 'Treatment',
+        actionType: 'Template_Used',
+        durationMilliseconds: 0,
+        isSuccess: true,
+        additionalData: JSON.stringify({ templateId: selectedTemplateId.value })
+      });
     }
   } catch (error) {
     console.error('Error al cargar plantilla:', error);
@@ -549,6 +592,15 @@ const saveAsTemplate = async () => {
     emit('templateSaved', templateData);
     showSaveTemplateModal.value = false;
 
+    TelemetryService.recordMetric({
+      experimentName: 'US35-R',
+      variant: 'Treatment',
+      actionType: 'Template_Created',
+      durationMilliseconds: 0,
+      isSuccess: true,
+      additionalData: JSON.stringify({ templateName: templateData.name })
+    });
+
     // Recargar lista de plantillas
     await loadTemplates();
   } catch (error) {
@@ -645,8 +697,20 @@ const addTask = () => {
 const submitPlan = async () => {
   try {
     const result = await store.submitWizard();
-    emit('planCreated', result);
-    emit('close');
+    const stats = getDurationAndStep();
+    stats.lastStep = 'Enviar';
+    
+    TelemetryService.recordMetric({
+      experimentName: 'US09-R | US07-R',
+      variant: 'Treatment',
+      actionType: 'Plan_Created',
+      durationMilliseconds: stats.durationSeconds * 1000,
+      isSuccess: true,
+      additionalData: JSON.stringify({ lastStep: stats.lastStep })
+    });
+
+    emit('planCreated', result, stats);
+    emit('close', { ...stats, isSubmit: true });
   } catch (error) {
     console.error(error);
   }
