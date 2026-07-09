@@ -5,6 +5,29 @@ import { ExecutionAssembler } from './execution.assembler';
 import axios from 'axios';
 const apiService = new ApiService();
 
+const EXECUTABLE_STATUS_KEYS = new Set(['pending', 'inprogress']);
+
+const getStatusKey = (status) => String(status || '')
+  .trim()
+  .toLowerCase()
+  .replace(/[\s_-]/g, '');
+
+const isExecutableWorkOrder = (order) => EXECUTABLE_STATUS_KEYS.has(getStatusKey(order?.status));
+
+const mergeWorkOrdersById = (...orderLists) => {
+  const ordersById = new Map();
+
+  orderLists.flat().forEach(order => {
+    if (order?.id === undefined || order?.id === null) return;
+    ordersById.set(order.id, {
+      ...(ordersById.get(order.id) || {}),
+      ...order
+    });
+  });
+
+  return Array.from(ordersById.values());
+};
+
 export default class ExecutionService {
   /**
    * Obtiene todas las plantas disponibles
@@ -45,10 +68,25 @@ export default class ExecutionService {
     try {
       if (!productionLineId) return [];
 
-      let endpoint = `/work-orders/by-production-line-to-execute/${productionLineId}`;
-      
-      const response = await apiService.get(endpoint);
-      return response.data;
+      let executableOrders = [];
+      let allLineOrders = [];
+
+      try {
+        const response = await apiService.get(`/work-orders/by-production-line-to-execute/${productionLineId}`);
+        executableOrders = response.data;
+      } catch (executionError) {
+        console.error('Error obteniendo ordenes listas para ejecutar:', executionError);
+      }
+
+      try {
+        const fallbackResponse = await apiService.get(`/work-orders/by-production-line/${productionLineId}`);
+        allLineOrders = fallbackResponse.data;
+      } catch (fallbackError) {
+        console.error('Error obteniendo ordenes generales de la linea:', fallbackError);
+      }
+
+      return mergeWorkOrdersById(executableOrders, allLineOrders)
+        .filter(order => isExecutableWorkOrder(order));
     } catch (error) {
       console.error('Error obteniendo órdenes de trabajo:', error);
       return [];
@@ -77,7 +115,7 @@ export default class ExecutionService {
    */
   static async getMachineries(productionLineId) {
     try {
-      const response = await axios.get(`https://mecanautbk-fffeemd3bqdwebce.centralus-01.azurewebsites.net/api/v1/machines/production-line/${productionLineId}`);
+      const response = await apiService.get(`/machines/production-line/${productionLineId}`);
       return response.data;
     } catch (error) {
       console.error('Error obteniendo maquinarias:', error);
@@ -225,7 +263,7 @@ export default class ExecutionService {
 
   static async decreaseInventoryPart(partId, quantity) {
     try {
-      const response = await axios.put(`https://mecanautbk-fffeemd3bqdwebce.centralus-01.azurewebsites.net/api/inventory-parts/${partId}/decrease`, quantity);
+      const response = await apiService.put(`/inventory-parts/${partId}/decrease`, Number(quantity));
       return response.data;
     } catch (error) {
       console.error('Error reduciendo stock:', error);
