@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ButtonComponent from '@/shared/components/button.component.vue';
 import { WorkOrderService } from '../services/work-order.service';
+import { InventoryPartsApiService } from '@/features/inventory-parts/services/inventory-parts-api.service';
 
 export default {
   name: 'WorkOrderFormModal',
@@ -21,6 +22,10 @@ export default {
     selectedProductionLine: {
       type: Number,
       default: null
+    },
+    selectedPlantId: {
+      type: [Number, String],
+      default: null
     }
   },
   emits: ['submit', 'delete', 'cancel'],
@@ -32,12 +37,17 @@ export default {
       date: '',
       productionLineId: '',
       machineIds: [],
-      tasks: []
+      tasks: [],
+      requiredParts: []
     });
 
     const availableMachines = ref([]);
     const loading = ref(false);
     const newTask = ref('');
+
+    const inventoryParts = ref([]);
+    const selectedPartId = ref('');
+    const requiredQty = ref(1);
 
     const loadMachines = async (productionLineId) => {
       try {
@@ -68,12 +78,24 @@ export default {
       formData.value.tasks.splice(index, 1);
     };
 
+    const loadInventoryParts = async () => {
+      try {
+        const plantId = props.selectedPlantId || 1;
+        const parts = await InventoryPartsApiService.getParts(plantId);
+        inventoryParts.value = parts;
+      } catch (error) {
+        console.error('Error cargando repuestos de inventario:', error);
+      }
+    };
+
     onMounted(async () => {
       // Usar la línea de producción seleccionada del componente padre
       if (props.selectedProductionLine) {
         formData.value.productionLineId = props.selectedProductionLine;
         await loadMachines(props.selectedProductionLine);
       }
+      
+      await loadInventoryParts();
       
       if (props.orderData) {
         formData.value = {
@@ -83,7 +105,8 @@ export default {
           date: props.orderData.date || '',
           productionLineId: props.orderData.productionLineId || props.selectedProductionLine,
           machineIds: [...(props.orderData.machineIds || [])],
-          tasks: [...(props.orderData.tasks || [])]
+          tasks: [...(props.orderData.tasks || [])],
+          requiredParts: [...(props.orderData.requiredParts || [])]
         };
         
         // Cargar máquinas para la línea de producción de la orden
@@ -127,6 +150,35 @@ export default {
       }
     };
 
+    const addRequiredPart = () => {
+      if (!selectedPartId.value || requiredQty.value < 1) return;
+      
+      const existingIndex = formData.value.requiredParts.findIndex(
+        item => item.inventoryPartId === Number(selectedPartId.value)
+      );
+      
+      if (existingIndex !== -1) {
+        formData.value.requiredParts[existingIndex].quantity += Number(requiredQty.value);
+      } else {
+        formData.value.requiredParts.push({
+          inventoryPartId: Number(selectedPartId.value),
+          quantity: Number(requiredQty.value)
+        });
+      }
+      
+      selectedPartId.value = '';
+      requiredQty.value = 1;
+    };
+
+    const removeRequiredPart = (index) => {
+      formData.value.requiredParts.splice(index, 1);
+    };
+
+    const getPartName = (partId) => {
+      const part = inventoryParts.value.find(p => p.id === partId);
+      return part ? part.name : `Repuesto #${partId}`;
+    };
+
     return {
       formData,
       availableMachines,
@@ -137,7 +189,13 @@ export default {
       toggleMachine,
       handleSubmit,
       handleCancel,
-      handleDelete
+      handleDelete,
+      inventoryParts,
+      selectedPartId,
+      requiredQty,
+      addRequiredPart,
+      removeRequiredPart,
+      getPartName
     };
   }
 };
@@ -244,6 +302,49 @@ export default {
               <div v-else class="empty-tasks">
                 <span class="empty-icon">📝</span>
                 <p>{{ $t('workOrder.form.fields.tasks.emptyState') }}</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Nueva Sección de Repuestos Requeridos (US11-R) -->
+          <div class="form-group">
+            <label>Repuestos Requeridos</label>
+            <div class="required-parts-container">
+              <div class="part-add-row flex gap-2 mb-3">
+                <select v-model="selectedPartId" class="part-select flex-1">
+                  <option value="">-- Seleccionar Repuesto --</option>
+                  <option v-for="part in inventoryParts" :key="part.id" :value="part.id">
+                    {{ part.name }} (Código: {{ part.code }}) - Stock: {{ part.currentStock }}
+                  </option>
+                </select>
+                <input
+                  v-model.number="requiredQty"
+                  type="number"
+                  min="1"
+                  placeholder="Cant"
+                  style="width: 80px;"
+                  class="qty-input"
+                />
+                <button type="button" class="add-part-button button-add" @click="addRequiredPart">
+                  Agregar
+                </button>
+              </div>
+
+              <!-- Listado de repuestos agregados -->
+              <div v-if="formData.requiredParts.length > 0" class="parts-list">
+                <div v-for="(item, index) in formData.requiredParts" :key="index" class="part-item flex justify-content-between align-items-center mb-2">
+                  <div class="part-item-details">
+                    <span class="part-item-name font-semibold" style="color: var(--clr-text);">{{ getPartName(item.inventoryPartId) }}</span>
+                    <span class="part-item-qty text-sm text-color-secondary ml-2" style="margin-left: 8px; color: var(--clr-grey-200);">({{ item.quantity }} requeridos)</span>
+                  </div>
+                  <button type="button" class="remove-part-button" style="background: none; border: none; font-size: 20px; color: var(--clr-grey-200); cursor: pointer;" @click="removeRequiredPart(index)">
+                    ×
+                  </button>
+                </div>
+              </div>
+              <div v-else class="empty-parts text-center p-3">
+                <span class="empty-icon" style="font-size: 24px;">⚙️</span>
+                <p style="margin: 4px 0 0; font-size: 14px; color: var(--clr-grey-200);">No se han asignado repuestos a esta orden.</p>
               </div>
             </div>
           </div>
@@ -615,6 +716,99 @@ export default {
     gap: 16px;
     padding-top: 24px;
     border-top: 1px solid var(--clr-grey-100);
+}
+
+.required-parts-container {
+    background: var(--clr-surface, #ffffff);
+    border: 1px solid var(--clr-grey-200, #e5e7eb);
+    border-radius: var(--radius-md, 8px);
+    padding: 16px;
+}
+
+.part-select {
+    padding: 10px 14px;
+    border: 2px solid var(--clr-grey-200);
+    border-radius: 4px;
+    background: var(--clr-bg);
+    color: var(--clr-text);
+    font-size: 14px;
+}
+
+.qty-input {
+    padding: 10px;
+    border: 2px solid var(--clr-grey-200);
+    border-radius: 4px;
+    background: var(--clr-bg);
+    color: var(--clr-text);
+    text-align: center;
+    font-size: 14px;
+}
+
+.button-add {
+    background-color: var(--clr-primary-500, #2563eb);
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 4px;
+    font-weight: 500;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.2s;
+    
+    &:hover {
+        background-color: var(--clr-primary-600, #1d4ed8);
+    }
+}
+
+.part-item {
+    background-color: var(--clr-grey-050, #f9fafb);
+    border: 1px solid var(--clr-grey-200, #e5e7eb);
+    border-radius: 6px;
+    padding: 10px 16px;
+}
+
+.flex {
+    display: flex;
+}
+
+.flex-1 {
+    flex: 1;
+}
+
+.gap-2 {
+    gap: 8px;
+}
+
+.mb-2 {
+    margin-bottom: 8px;
+}
+
+.mb-3 {
+    margin-bottom: 12px;
+}
+
+.justify-content-between {
+    justify-content: space-between;
+}
+
+.align-items-center {
+    align-items: center;
+}
+
+.font-semibold {
+    font-weight: 600;
+}
+
+.text-sm {
+    font-size: 12px;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.p-3 {
+    padding: 12px;
 }
 </style>
 

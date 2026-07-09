@@ -9,6 +9,7 @@ import ButtonComponent from '@/shared/components/button.component.vue';
 import WorkOrderFormModal from '../components/work-order-form-modal.component.vue';
 import AssignTechniciansModal from '../components/assign-technicians-modal.component.vue';
 import CloseWorkOrderModal from '../components/close-work-order-modal.component.vue';
+import InventoryAlertModalComponent from '../components/inventory-alert-modal.component.vue';
 import { WorkOrderService } from '../services/work-order.service';
 import { PlantApiService } from '@/features/asset-management/services/plant-api.service';
 import { ProductionLineApiService } from '@/features/asset-management/services/production-line-api.service';
@@ -22,7 +23,8 @@ export default {
     ButtonComponent,
     WorkOrderFormModal,
     AssignTechniciansModal,
-    CloseWorkOrderModal
+    CloseWorkOrderModal,
+    InventoryAlertModal: InventoryAlertModalComponent
   },
   setup() {
     // Estado
@@ -33,10 +35,13 @@ export default {
     const showEditModal = ref(false);
     const showAssignTechniciansModal = ref(false);
     const showCloseOrderModal = ref(false);
+    const showInventoryAlertModal = ref(false);
     const selectedPlant = ref(null);
     const selectedProductionLine = ref(null);
     const loading = ref(false);
     const loadingInfoPanel = ref(false);
+    const loadingStart = ref(false);
+    const missingParts = ref([]);
 
     // Datos para filtros
     const plants = ref([]);
@@ -219,6 +224,36 @@ export default {
       closePanel();
     };
 
+    const handleStartOrder = async (orderId) => {
+      try {
+        loadingStart.value = true;
+        
+        // 1. Verificar stock
+        const verification = await WorkOrderService.verifyStock(orderId);
+        const hasMissingParts = verification.some(part => !part.hasSufficientStock);
+
+        if (hasMissingParts) {
+          missingParts.value = verification.filter(part => !part.hasSufficientStock);
+          showInventoryAlertModal.value = true;
+          return;
+        }
+
+        // 2. Si no hay faltantes, iniciar la orden
+        await WorkOrderService.startOrder(orderId);
+        
+        // Recargar orden seleccionada
+        const updatedOrder = await WorkOrderService.getOrder(orderId);
+        selectedOrder.value = updatedOrder;
+        await updateInfoPanel(updatedOrder);
+        await loadWorkOrders();
+      } catch (error) {
+        console.error('Error al iniciar orden:', error);
+        alert(error.response?.data?.message || 'Error al iniciar la orden de trabajo');
+      } finally {
+        loadingStart.value = false;
+      }
+    };
+
     const closePanel = () => {
       showInfoPanel.value = false;
       setTimeout(() => {
@@ -269,12 +304,15 @@ export default {
       showCreateModal,
       showEditModal,
       showAssignTechniciansModal,
+      showInventoryAlertModal,
       selectedPlant,
       selectedProductionLine,
       plants,
       productionLines,
       loading,
       loadingInfoPanel,
+      loadingStart,
+      missingParts,
       columns,
       infoData,
       technicianData,
@@ -287,6 +325,7 @@ export default {
       handlePlantChange,
       handleProductionLineChange,
       handleComplete,
+      handleStartOrder,
       showCloseOrderModal,
       closePanel
     };
@@ -376,8 +415,21 @@ export default {
           </InfoContainer>
 
           <div class="panel-actions">
+            <!-- Botón para iniciar orden si está pendiente -->
             <ButtonComponent
-              v-if="selectedOrder.status !== 'Completed'"
+              v-if="selectedOrder.status === 'Pending'"
+              variant="primary"
+              size="sm"
+              icon-left="pi pi-play"
+              :disabled="loadingStart"
+              @clicked="handleStartOrder(selectedOrder.id)"
+            >
+              Iniciar Orden
+            </ButtonComponent>
+
+            <!-- Botón para cerrar orden si está en progreso -->
+            <ButtonComponent
+              v-if="selectedOrder.status === 'InProgress'"
               variant="primary"
               size="sm"
               icon-left="pi pi-check"
@@ -385,6 +437,7 @@ export default {
             >
               Cerrar Orden
             </ButtonComponent>
+
             <ButtonComponent
               variant="warning"
               size="sm"
@@ -404,6 +457,7 @@ export default {
       :is-edit="false"
       :order-data="null"
       :selected-production-line="selectedProductionLine"
+      :selected-plant-id="selectedPlant"
       @submit="handleCreate"
       @cancel="showCreateModal = false"
     />
@@ -413,6 +467,7 @@ export default {
       :is-edit="true"
       :order-data="selectedOrder"
       :selected-production-line="selectedProductionLine"
+      :selected-plant-id="selectedPlant"
       @submit="handleEdit"
       @delete="handleDelete"
       @cancel="showEditModal = false"
@@ -430,6 +485,12 @@ export default {
       v-model="showCloseOrderModal"
       :order-id="selectedOrder?.id"
       @completed="handleComplete"
+    />
+
+    <InventoryAlertModal
+      v-if="showInventoryAlertModal"
+      v-model="showInventoryAlertModal"
+      :missing-parts="missingParts"
     />
   </div>
 </template>
