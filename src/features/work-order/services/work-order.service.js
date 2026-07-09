@@ -14,7 +14,7 @@ export class WorkOrderService {
       if (!productionLineId) return [];
 
       let endpoint = `/work-orders/by-production-line/${productionLineId}`;
-            
+
       const response = await apiService.get(endpoint);
       return response.data.map(order => new WorkOrderEntity(order));
     } catch (error) {
@@ -61,7 +61,7 @@ export class WorkOrderService {
     try {
       const response = await apiService.get('/users');
       // Filtrar solo usuarios con rol RoleTechnical
-      const technicians = response.data.filter(user => 
+      const technicians = response.data.filter(user =>
         user.roles && user.roles.includes('RoleTechnical')
       );
       return technicians;
@@ -85,7 +85,8 @@ export class WorkOrderService {
         type: 'Corrective', // Tipo fijo
         machineIds: orderData.machineIds || [],
         tasks: orderData.tasks || [],
-        technicianIds: orderData.technicianIds || []
+        technicianIds: orderData.technicianIds || [],
+        requiredParts: orderData.requiredParts || []
       };
 
       const response = await apiService.post('/work-orders', payload);
@@ -108,7 +109,7 @@ export class WorkOrderService {
       console.log('Service - IDs de técnicos:', technicianIds);
       console.log('Service - Tipo de technicianIds:', typeof technicianIds);
       console.log('Service - Es array:', Array.isArray(technicianIds));
-      
+
       // El endpoint espera directamente el array de IDs
       const response = await apiService.put(`/work-orders/${orderId}/technicians`, technicianIds);
       console.log('Service - Respuesta exitosa:', response.data);
@@ -130,12 +131,12 @@ export class WorkOrderService {
     try {
       // Para actualizar, primero obtenemos la orden actual
       const currentOrder = await this.getOrder(id);
-      
+
       // Luego actualizamos los técnicos si es necesario
       if (orderData.technicianIds && orderData.technicianIds.length > 0) {
         await this.assignTechnicians(id, orderData.technicianIds);
       }
-      
+
       // Retornamos la orden actualizada
       return await this.getOrder(id);
     } catch (error) {
@@ -171,6 +172,36 @@ export class WorkOrderService {
       return new WorkOrderEntity(response.data);
     } catch (error) {
       console.error('Error completando orden de trabajo:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Verifica el stock de los repuestos asignados a una orden de trabajo
+   * @param {number} id - ID de la orden de trabajo
+   * @returns {Promise<Array>} - Resultados de la verificación de stock
+   */
+  static async verifyStock(id) {
+    try {
+      const response = await apiService.get(`/work-orders/${id}/stock-verification`);
+      return response.data;
+    } catch (error) {
+      console.error('Error verificando stock:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Inicia una orden de trabajo
+   * @param {number} id - ID de la orden de trabajo
+   * @returns {Promise<WorkOrderEntity>} - Orden de trabajo iniciada
+   */
+  static async startOrder(id) {
+    try {
+      const response = await apiService.put(`/work-orders/${id}/start`);
+      return new WorkOrderEntity(response.data);
+    } catch (error) {
+      console.error('Error iniciando orden de trabajo:', error);
       throw error;
     }
   }
